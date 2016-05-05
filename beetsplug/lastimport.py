@@ -22,6 +22,8 @@ from beets import dbcore
 from beets import config
 from beets import plugins
 from beets.dbcore import types
+from zlib import crc32
+import sqlite3
 
 API_URL = 'http://ws.audioscrobbler.com/2.0/'
 
@@ -30,23 +32,29 @@ class LastImportPlugin(plugins.BeetsPlugin):
     def __init__(self):
         super(LastImportPlugin, self).__init__()
         config['lastfm'].add({
-            'user':     '',
-            'api_key':  plugins.LASTFM_KEY,
+            'user': '',
+            'api_key': plugins.LASTFM_KEY,
+            'sqlite3_custom_db': '',
         })
-        config['lastfm']['api_key'].redact = True
         self.config.add({
             'per_page': 500,
             'retry_limit': 3,
         })
         self.item_types = {
-            'play_count':  types.INTEGER,
+            'play_count': types.INTEGER,
         }
 
     def commands(self):
         cmd = ui.Subcommand('lastimport', help=u'import last.fm play-count')
 
+        cmd.parser.add_option(
+            u'-t', u'--transfer',
+            action='store_true', default=False,
+            help=u'transfer plays to foobar2000\'s custom database',
+        )
+
         def func(lib, opts, args):
-            import_lastfm(lib, self._log)
+            import_lastfm(lib, opts, self._log)
 
         cmd.func = func
         return [cmd]
@@ -59,7 +67,7 @@ class CustomUser(pylast.User):
     tracks.
     """
     def __init__(self, *args, **kwargs):
-        super(CustomUser, self).__init__(*args, **kwargs)
+        super(CustomUser, self).__init__(*args[:-1], **kwargs)
 
     def _get_things(self, method, thing, thing_type, params=None,
                     cacheable=True):
@@ -109,9 +117,10 @@ class CustomUser(pylast.User):
             "getTopTracks", "track", pylast.Track, params, cacheable)
 
 
-def import_lastfm(lib, log):
+def import_lastfm(lib, opts, log):
     user = config['lastfm']['user'].get(unicode)
     per_page = config['lastimport']['per_page'].get(int)
+    sqlite3_db = config['lastfm']['sqlite3_custom_db'].get(unicode)
 
     if not user:
         raise ui.UserError(u'You must specify a user name for lastimport')
@@ -124,19 +133,25 @@ def import_lastfm(lib, log):
     unknown_total = 0
     retry_limit = config['lastimport']['retry_limit'].get(int)
     # Iterate through a yet to be known page total count
+    if opts.transfer:
+        conn = sqlite3.connect(sqlite3_db)
+        c = conn.cursor()
+
     while page_current < page_total:
         log.info(u'Querying page #{0}{1}...',
                  page_current + 1,
                  '/{}'.format(page_total) if page_total > 1 else '')
 
         for retry in range(0, retry_limit):
-            tracks, page_total = fetch_tracks(user, page_current + 1, per_page)
+            tracks, page_total = fetch_tracks(user, page_current + 1,
+                                              per_page, opts)
             if page_total < 1:
                 # It means nothing to us!
                 raise ui.UserError(u'Last.fm reported no data.')
 
             if tracks:
-                found, unknown = process_tracks(lib, tracks, log)
+                found, unknown = process_tracks(lib, tracks, log,
+                                                opts, sqlite3_db, c)
                 found_total += found
                 unknown_total += unknown
                 break
@@ -153,13 +168,19 @@ def import_lastfm(lib, log):
                               u'tried {1} times', page_current, retry + 1)
         page_current += 1
 
+
+    raw_input('Please close any programs currently accessing' +
+              'the database before continuing.')
+    conn.commit()
+    conn.close()
+
     log.info(u'... done!')
     log.info(u'finished processing {0} song pages', page_total)
     log.info(u'{0} unknown play-counts', unknown_total)
     log.info(u'{0} play-counts imported', found_total)
 
 
-def fetch_tracks(user, page, limit):
+def fetch_tracks(user, page, limit, opts):
     """ JSON format:
         [
             {
@@ -171,7 +192,7 @@ def fetch_tracks(user, page, limit):
         ]
     """
     network = pylast.LastFMNetwork(api_key=config['lastfm']['api_key'])
-    user_obj = CustomUser(user, network)
+    user_obj = CustomUser(user, network, opts)
     results, total_pages =\
         user_obj.get_top_tracks_by_page(limit=limit, page=page)
     return [
@@ -186,7 +207,7 @@ def fetch_tracks(user, page, limit):
     ], total_pages
 
 
-def process_tracks(lib, tracks, log):
+def process_tracks(lib, tracks, log, opts, sqlite3_db, c):
     total = len(tracks)
     total_found = 0
     total_fails = 0
@@ -197,6 +218,7 @@ def process_tracks(lib, tracks, log):
         trackid = tracks[num]['mbid'].strip()
         artist = tracks[num]['artist'].get('name', '').strip()
         title = tracks[num]['name'].strip()
+        play_count = int(tracks[num]['playcount'])
         album = ''
         if 'album' in tracks[num]:
             album = tracks[num]['album'].get('name', '').strip()
@@ -230,17 +252,26 @@ def process_tracks(lib, tracks, log):
 
         if song is not None:
             count = int(song.get('play_count', 0))
-            new_count = int(tracks[num]['playcount'])
             log.debug(u'match: {0} - {1} ({2}) '
                       u'updating: play_count {3} => {4}',
-                      song.artist, song.title, song.album, count, new_count)
-            song['play_count'] = new_count
+                      song.artist, song.title, song.album, count, play_count)
+            song['play_count'] = play_count
             song.store()
             total_found += 1
+
         else:
             total_fails += 1
             log.info(u'  - No match: {0} - {1} ({2})',
                      artist, title, album)
+
+        # Apply changes to sqlite3 database,
+        # regardless of existence within beets library
+        if opts.transfer:
+            at = artist.lower() + title.lower()
+            at = at.encode('utf-8')
+            artist_title = crc32(at) & 0xffffffff
+            log.debug(u'query: {0} - {1} ({2})', artist, title, artist_title)
+            c.execute('INSERT OR REPLACE INTO quicktag(url,subsong,fieldname,value) VALUES("{}","-1","LASTFM_PLAYCOUNT_DB","{}");'.format(artist_title, str(play_count)))
 
     if total_fails > 0:
         log.info(u'Acquired {0}/{1} play-counts ({2} unknown)',
