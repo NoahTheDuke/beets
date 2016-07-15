@@ -47,14 +47,15 @@ def replace_ext(path, ext):
 
     The new extension must not contain a leading dot.
     """
-    return os.path.splitext(path)[0] + b'.' + ext
+    ext_dot = b'.' + ext
+    return os.path.splitext(path)[0] + ext_dot
 
 
 def get_format(fmt=None):
     """Return the command template and the extension from the config.
     """
     if not fmt:
-        fmt = config['convert']['format'].get(unicode).lower()
+        fmt = config['convert']['format'].as_str().lower()
     fmt = ALIASES.get(fmt, fmt)
 
     try:
@@ -67,20 +68,20 @@ def get_format(fmt=None):
             .format(fmt)
         )
     except ConfigTypeError:
-        command = config['convert']['formats'][fmt].get(bytes)
+        command = config['convert']['formats'][fmt].get(str)
         extension = fmt
 
     # Convenience and backwards-compatibility shortcuts.
     keys = config['convert'].keys()
     if 'command' in keys:
-        command = config['convert']['command'].get(unicode)
+        command = config['convert']['command'].as_str()
     elif 'opts' in keys:
         # Undocumented option for backwards compatibility with < 1.3.1.
         command = u'ffmpeg -i $source -y {0} $dest'.format(
-            config['convert']['opts'].get(unicode)
+            config['convert']['opts'].as_str()
         )
     if 'extension' in keys:
-        extension = config['convert']['extension'].get(unicode)
+        extension = config['convert']['extension'].as_str()
 
     return (command.encode('utf8'), extension.encode('utf8'))
 
@@ -185,8 +186,8 @@ class ConvertPlugin(BeetsPlugin):
         args = shlex.split(command)
         for i, arg in enumerate(args):
             args[i] = Template(arg).safe_substitute({
-                b'source': source,
-                b'dest': dest,
+                'source': source,
+                'dest': dest,
             })
 
         if pretend:
@@ -199,9 +200,10 @@ class ConvertPlugin(BeetsPlugin):
             # Something went wrong (probably Ctrl+C), remove temporary files
             self._log.info(u'Encoding {0} failed. Cleaning up...',
                            util.displayable_path(source))
-            self._log.debug(u'Command {0} exited with status {1}',
-                            exc.cmd.decode('utf8', 'ignore'),
-                            exc.returncode)
+            self._log.debug(u'Command {0} exited with status {1}: {2}',
+                            args,
+                            exc.returncode,
+                            exc.output)
             util.remove(dest)
             util.prune_dirs(os.path.dirname(dest))
             raise
@@ -218,6 +220,9 @@ class ConvertPlugin(BeetsPlugin):
 
     def convert_item(self, dest_dir, keep_new, path_formats, fmt,
                      pretend=False):
+        """A pipeline thread that converts `Item` objects from a
+        library.
+        """
         command, ext = get_format(fmt)
         item, original, converted = None, None, None
         while True:
@@ -384,7 +389,7 @@ class ConvertPlugin(BeetsPlugin):
             path_formats = ui.get_path_formats()
 
         if not opts.format:
-            opts.format = self.config['format'].get(unicode).lower()
+            opts.format = self.config['format'].as_str().lower()
 
         pretend = opts.pretend if opts.pretend is not None else \
             self.config['pretend'].get(bool)
@@ -417,13 +422,15 @@ class ConvertPlugin(BeetsPlugin):
         """Transcode a file automatically after it is imported into the
         library.
         """
-        fmt = self.config['format'].get(unicode).lower()
+        fmt = self.config['format'].as_str().lower()
         if should_transcode(item, fmt):
             command, ext = get_format()
 
             # Create a temporary file for the conversion.
             tmpdir = self.config['tmpdir'].get()
-            fd, dest = tempfile.mkstemp('.' + ext, dir=tmpdir)
+            if tmpdir:
+                tmpdir = util.py3_path(util.bytestring_path(tmpdir))
+            fd, dest = tempfile.mkstemp(util.py3_path(b'.' + ext), dir=tmpdir)
             os.close(fd)
             dest = util.bytestring_path(dest)
             _temp_files.append(dest)  # Delete the transcode later.

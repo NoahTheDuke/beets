@@ -18,10 +18,10 @@ from __future__ import division, absolute_import, print_function
 import subprocess
 import os
 import collections
-import itertools
 import sys
 import warnings
 import re
+from six.moves import zip
 
 from beets import logging
 from beets import ui
@@ -102,7 +102,7 @@ class Bs1770gainBackend(Backend):
             'method': 'replaygain',
         })
         self.chunk_at = config['chunk_at'].as_number()
-        self.method = b'--' + bytes(config['method'].get(unicode))
+        self.method = b'--' + bytes(config['method'].as_str())
 
         cmd = b'bs1770gain'
         try:
@@ -195,7 +195,7 @@ class Bs1770gainBackend(Backend):
         # Construct shell command.
         cmd = [self.command]
         cmd = cmd + [self.method]
-        cmd = cmd + [b'-it']
+        cmd = cmd + [b'-p']
 
         # Workaround for Windows: the underlying tool fails on paths
         # with the \\?\ prefix, so we don't use it here. This
@@ -222,9 +222,9 @@ class Bs1770gainBackend(Backend):
         out = []
         data = text.decode('utf8', errors='ignore')
         regex = re.compile(
-            ur'(\s{2,2}\[\d+\/\d+\].*?|\[ALBUM\].*?)'
-            '(?=\s{2,2}\[\d+\/\d+\]|\s{2,2}\[ALBUM\]'
-            ':|done\.\s)', re.DOTALL | re.UNICODE)
+            u'(\\s{2,2}\\[\\d+\\/\\d+\\].*?|\\[ALBUM\\].*?)'
+            '(?=\\s{2,2}\\[\\d+\\/\\d+\\]|\\s{2,2}\\[ALBUM\\]'
+            ':|done\\.\\s)', re.DOTALL | re.UNICODE)
         results = re.findall(regex, data)
         for parts in results[0:num_lines]:
             part = parts.split(b'\n')
@@ -256,7 +256,7 @@ class CommandBackend(Backend):
             'noclip': True,
         })
 
-        self.command = config["command"].get(unicode)
+        self.command = config["command"].as_str()
 
         if self.command:
             # Explicit executable path.
@@ -286,7 +286,7 @@ class CommandBackend(Backend):
         """Computes the track gain of the given tracks, returns a list
         of TrackGain objects.
         """
-        supported_items = filter(self.format_supported, items)
+        supported_items = list(filter(self.format_supported, items))
         output = self.compute_gain(supported_items, False)
         return output
 
@@ -297,7 +297,7 @@ class CommandBackend(Backend):
         # TODO: What should be done when not all tracks in the album are
         # supported?
 
-        supported_items = filter(self.format_supported, album.items())
+        supported_items = list(filter(self.format_supported, album.items()))
         if len(supported_items) != len(album.items()):
             self._log.debug(u'tracks are of unsupported format')
             return AlbumGain(None, [])
@@ -308,9 +308,9 @@ class CommandBackend(Backend):
     def format_supported(self, item):
         """Checks whether the given item is supported by the selected tool.
         """
-        if 'mp3gain' in self.command and item.format != 'MP3':
+        if b'mp3gain' in self.command and item.format != 'MP3':
             return False
-        elif 'aacgain' in self.command and item.format not in ('MP3', 'AAC'):
+        elif b'aacgain' in self.command and item.format not in ('MP3', 'AAC'):
             return False
         return True
 
@@ -809,7 +809,7 @@ class ReplayGainPlugin(BeetsPlugin):
         })
 
         self.overwrite = self.config['overwrite'].get(bool)
-        backend_name = self.config['backend'].get(unicode)
+        backend_name = self.config['backend'].as_str()
         if backend_name not in self.backends:
             raise ui.UserError(
                 u"Selected ReplayGain backend {0} is not supported. "
@@ -883,8 +883,7 @@ class ReplayGainPlugin(BeetsPlugin):
                 )
 
             self.store_album_gain(album, album_gain.album_gain)
-            for item, track_gain in itertools.izip(album.items(),
-                                                   album_gain.track_gains):
+            for item, track_gain in zip(album.items(), album_gain.track_gains):
                 self.store_track_gain(item, track_gain)
                 if write:
                     item.try_write()

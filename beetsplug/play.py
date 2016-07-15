@@ -128,7 +128,7 @@ class PlayPlugin(BeetsPlugin):
                 u'You are about to queue {0} {1}.'.format(
                     len(selection), item_type)))
 
-            if ui.input_options(('Continue', 'Abort')) == 'a':
+            if ui.input_options((u'Continue', u'Abort')) == 'a':
                 return
 
         ui.print_(u'Playing {0} {1}.'.format(len(selection), item_type))
@@ -137,8 +137,7 @@ class PlayPlugin(BeetsPlugin):
         else:
             open_args = [self._create_tmp_playlist(paths)]
 
-        self._log.debug(u'executing command: {} {}', command_str,
-                        b' '.join(open_args))
+        self._log.debug(u'executing command: {} {!r}', command_str, open_args)
         try:
             util.interactive_open(open_args, command_str)
         except OSError as exc:
@@ -148,7 +147,7 @@ class PlayPlugin(BeetsPlugin):
     def _create_tmp_playlist(self, paths_list):
         """Create a temporary .m3u file. Return the filename.
         """
-        m3u = NamedTemporaryFile('w', suffix='.m3u', delete=False)
+        m3u = NamedTemporaryFile('wb', suffix='.m3u', delete=False)
         for item in paths_list:
             m3u.write(item + b'\n')
         m3u.close()

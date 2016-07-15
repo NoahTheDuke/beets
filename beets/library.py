@@ -22,10 +22,11 @@ import sys
 import unicodedata
 import time
 import re
+import six
 from unidecode import unidecode
 
 from beets import logging
-from beets.mediafile import MediaFile, MutagenError, UnreadableFileError
+from beets.mediafile import MediaFile, UnreadableFileError
 from beets import plugins
 from beets import util
 from beets.util import bytestring_path, syspath, normpath, samefile
@@ -34,6 +35,14 @@ from beets import dbcore
 from beets.dbcore import types
 import beets
 
+# To use the SQLite "blob" type, it doesn't suffice to provide a byte
+# string; SQLite treats that as encoded text. Wrapping it in a `buffer` or a
+# `memoryview`, depending on the Python version, tells it that we
+# actually mean non-text data.
+if six.PY2:
+    BLOB_TYPE = buffer  # noqa ignore=F821
+else:
+    BLOB_TYPE = memoryview
 
 log = logging.getLogger('beets')
 
@@ -48,7 +57,7 @@ class PathQuery(dbcore.FieldQuery):
     and case-sensitive otherwise.
     """
 
-    escape_re = re.compile(r'[\\_%]')
+    escape_re = re.compile(br'[\\_%]')
     escape_char = b'\\'
 
     def __init__(self, field, pattern, fast=True, case_sensitive=None):
@@ -85,8 +94,14 @@ class PathQuery(dbcore.FieldQuery):
         colon = query_part.find(':')
         if colon != -1:
             query_part = query_part[:colon]
-        return (os.sep in query_part and
-                os.path.exists(syspath(normpath(query_part))))
+
+        # Test both `sep` and `altsep` (i.e., both slash and backslash on
+        # Windows).
+        return (
+            (os.sep in query_part or
+             (os.altsep and os.altsep in query_part)) and
+            os.path.exists(syspath(normpath(query_part)))
+        )
 
     def match(self, item):
         path = item.path if self.case_sensitive else item.path.lower()
@@ -94,16 +109,16 @@ class PathQuery(dbcore.FieldQuery):
 
     def col_clause(self):
         if self.case_sensitive:
-            file_blob = buffer(self.file_path)
-            dir_blob = buffer(self.dir_path)
+            file_blob = BLOB_TYPE(self.file_path)
+            dir_blob = BLOB_TYPE(self.dir_path)
             return '({0} = ?) || (substr({0}, 1, ?) = ?)'.format(self.field), \
                    (file_blob, len(dir_blob), dir_blob)
 
         escape = lambda m: self.escape_char + m.group(0)
         dir_pattern = self.escape_re.sub(escape, self.dir_path)
-        dir_blob = buffer(dir_pattern + b'%')
+        dir_blob = BLOB_TYPE(dir_pattern + b'%')
         file_pattern = self.escape_re.sub(escape, self.file_path)
-        file_blob = buffer(file_pattern)
+        file_blob = BLOB_TYPE(file_pattern)
         return '({0} LIKE ? ESCAPE ?) || ({0} LIKE ? ESCAPE ?)'.format(
             self.field), (file_blob, self.escape_char, dir_blob,
                           self.escape_char)
@@ -117,14 +132,15 @@ class DateType(types.Float):
     query = dbcore.query.DateQuery
 
     def format(self, value):
-        return time.strftime(beets.config['time_format'].get(unicode),
+        return time.strftime(beets.config['time_format'].as_str(),
                              time.localtime(value or 0))
 
     def parse(self, string):
         try:
             # Try a formatted date string.
             return time.mktime(
-                time.strptime(string, beets.config['time_format'].get(unicode))
+                time.strptime(string,
+                              beets.config['time_format'].as_str())
             )
         except ValueError:
             # Fall back to a plain timestamp number.
@@ -146,12 +162,11 @@ class PathType(types.Type):
         return normpath(bytestring_path(string))
 
     def normalize(self, value):
-        if isinstance(value, unicode):
+        if isinstance(value, six.text_type):
             # Paths stored internally as encoded bytes.
             return bytestring_path(value)
 
-        elif isinstance(value, buffer):
-            # SQLite must store bytestings as buffers to avoid decoding.
+        elif isinstance(value, BLOB_TYPE):
             # We unwrap buffers to bytes.
             return bytes(value)
 
@@ -163,7 +178,7 @@ class PathType(types.Type):
 
     def to_sql(self, value):
         if isinstance(value, bytes):
-            value = buffer(value)
+            value = BLOB_TYPE(value)
         return value
 
 
@@ -254,7 +269,7 @@ PF_KEY_DEFAULT = 'default'
 
 
 # Exceptions.
-
+@six.python_2_unicode_compatible
 class FileOperationError(Exception):
     """Indicates an error when interacting with a file on disk.
     Possibilities include an unsupported media type, a permissions
@@ -268,35 +283,39 @@ class FileOperationError(Exception):
         self.path = path
         self.reason = reason
 
-    def __unicode__(self):
+    def text(self):
         """Get a string representing the error. Describes both the
         underlying reason and the file path in question.
         """
         return u'{0}: {1}'.format(
             util.displayable_path(self.path),
-            unicode(self.reason)
+            six.text_type(self.reason)
         )
 
-    def __str__(self):
-        return unicode(self).encode('utf8')
+    # define __str__ as text to avoid infinite loop on super() calls
+    # with @six.python_2_unicode_compatible
+    __str__ = text
 
 
+@six.python_2_unicode_compatible
 class ReadError(FileOperationError):
     """An error while reading a file (i.e. in `Item.read`).
     """
-    def __unicode__(self):
-        return u'error reading ' + super(ReadError, self).__unicode__()
+    def __str__(self):
+        return u'error reading ' + super(ReadError, self).text()
 
 
+@six.python_2_unicode_compatible
 class WriteError(FileOperationError):
     """An error while writing a file (i.e. in `Item.write`).
     """
-    def __unicode__(self):
-        return u'error writing ' + super(WriteError, self).__unicode__()
+    def __str__(self):
+        return u'error writing ' + super(WriteError, self).text()
 
 
 # Item and Album model classes.
 
+@six.python_2_unicode_compatible
 class LibModel(dbcore.Model):
     """Shared concrete functionality for Items and Albums.
     """
@@ -324,7 +343,7 @@ class LibModel(dbcore.Model):
 
     def __format__(self, spec):
         if not spec:
-            spec = beets.config[self._format_config_key].get(unicode)
+            spec = beets.config[self._format_config_key].as_str()
         result = self.evaluate_template(spec)
         if isinstance(spec, bytes):
             # if spec is a byte string then we must return a one as well
@@ -333,10 +352,10 @@ class LibModel(dbcore.Model):
             return result
 
     def __str__(self):
-        return format(self).encode('utf8')
-
-    def __unicode__(self):
         return format(self)
+
+    def __bytes__(self):
+        return self.__str__().encode('utf-8')
 
 
 class FormattedItemMapping(dbcore.db.FormattedMapping):
@@ -510,9 +529,9 @@ class Item(LibModel):
         """
         # Encode unicode paths and read buffers.
         if key == 'path':
-            if isinstance(value, unicode):
+            if isinstance(value, six.text_type):
                 value = bytestring_path(value)
-            elif isinstance(value, buffer):
+            elif isinstance(value, BLOB_TYPE):
                 value = bytes(value)
 
         if key in MediaFile.fields():
@@ -554,12 +573,12 @@ class Item(LibModel):
             read_path = normpath(read_path)
         try:
             mediafile = MediaFile(syspath(read_path))
-        except (OSError, IOError, UnreadableFileError) as exc:
+        except UnreadableFileError as exc:
             raise ReadError(read_path, exc)
 
         for key in self._media_fields:
             value = getattr(mediafile, key)
-            if isinstance(value, (int, long)):
+            if isinstance(value, six.integer_types):
                 if value.bit_length() > 63:
                     value = 0
             self[key] = value
@@ -601,14 +620,14 @@ class Item(LibModel):
         try:
             mediafile = MediaFile(syspath(path),
                                   id3v23=beets.config['id3v23'].get(bool))
-        except (OSError, IOError, UnreadableFileError) as exc:
+        except UnreadableFileError as exc:
             raise ReadError(self.path, exc)
 
         # Write the tags to the file.
         mediafile.update(item_tags)
         try:
             mediafile.save()
-        except (OSError, IOError, MutagenError) as exc:
+        except UnreadableFileError as exc:
             raise WriteError(self.path, exc)
 
         # The file has a new mtime.
@@ -833,7 +852,7 @@ class Item(LibModel):
             )
 
         if fragment:
-            return subpath
+            return util.as_string(subpath)
         else:
             return normpath(os.path.join(basedir, subpath))
 
@@ -1054,7 +1073,8 @@ class Album(LibModel):
         image = bytestring_path(image)
         item_dir = item_dir or self.item_dir()
 
-        filename_tmpl = Template(beets.config['art_filename'].get(unicode))
+        filename_tmpl = Template(
+            beets.config['art_filename'].as_str())
         subpath = self.evaluate_template(filename_tmpl, True)
         if beets.config['asciify_paths']:
             subpath = unidecode(subpath)
@@ -1172,7 +1192,8 @@ def parse_query_string(s, model_cls):
 
     The string is split into components using shell-like syntax.
     """
-    assert isinstance(s, unicode), u"Query is not unicode: {0!r}".format(s)
+    message = u"Query is not unicode: {0!r}".format(s)
+    assert isinstance(s, six.text_type), message
     try:
         parts = util.shlex_split(s)
     except ValueError as exc:
@@ -1192,8 +1213,6 @@ class Library(dbcore.Database):
                  path_formats=((PF_KEY_DEFAULT,
                                '$artist/$album/$track $title'),),
                  replacements=None):
-        if path != ':memory:':
-            self.path = bytestring_path(normpath(path))
         super(Library, self).__init__(path)
 
         self.directory = bytestring_path(normpath(directory))
@@ -1248,7 +1267,7 @@ class Library(dbcore.Database):
         # Parse the query, if necessary.
         try:
             parsed_sort = None
-            if isinstance(query, basestring):
+            if isinstance(query, six.string_types):
                 query, parsed_sort = parse_query_string(query, model_cls)
             elif isinstance(query, (list, tuple)):
                 query, parsed_sort = parse_query_parts(query, model_cls)
@@ -1325,7 +1344,7 @@ class DefaultTemplateFunctions(object):
     additional context to the functions -- specifically, the Item being
     evaluated.
     """
-    _prefix = b'tmpl_'
+    _prefix = 'tmpl_'
 
     def __init__(self, item=None, lib=None):
         """Parametrize the functions. If `item` or `lib` is None, then
@@ -1398,7 +1417,7 @@ class DefaultTemplateFunctions(object):
     def tmpl_time(s, fmt):
         """Format a time value using `strftime`.
         """
-        cur_fmt = beets.config['time_format'].get(unicode)
+        cur_fmt = beets.config['time_format'].as_str()
         return time.strftime(fmt, time.strptime(s, cur_fmt))
 
     def tmpl_aunique(self, keys=None, disam=None):

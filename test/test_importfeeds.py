@@ -43,7 +43,8 @@ class ImportfeedsTestTest(unittest.TestCase):
 
     def test_playlist_in_subdir(self):
         config['importfeeds']['formats'] = 'm3u'
-        config['importfeeds']['m3u_name'] = 'subdir/imported.m3u'
+        config['importfeeds']['m3u_name'] = \
+            os.path.join('subdir', 'imported.m3u')
         album = Album(album='album/name', id=1)
         item_path = os.path.join('path', 'to', 'item')
         item = Item(title='song', album_id=1, path=item_path)
@@ -61,5 +62,5 @@ class ImportfeedsTestTest(unittest.TestCase):
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

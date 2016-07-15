@@ -20,6 +20,7 @@ from test._common import unittest
 from test.helper import TestHelper
 
 from beets.library import Item
+from beets import util
 
 
 class KeyFinderTest(unittest.TestCase, TestHelper):
@@ -45,7 +46,7 @@ class KeyFinderTest(unittest.TestCase, TestHelper):
         item.load()
         self.assertEqual(item['initial_key'], 'C#m')
         self.command_output.assert_called_with(
-            ['KeyFinder', '-f', item.path])
+            [b'KeyFinder', b'-f', util.syspath(item.path)])
 
     def test_add_key_on_import(self):
         self.command_output.return_value = 'dbm'
@@ -81,5 +82,5 @@ class KeyFinderTest(unittest.TestCase, TestHelper):
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

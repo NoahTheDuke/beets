@@ -124,10 +124,10 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         self.assertEqualTimes(album.added, album_added_before)
         items_added_after = dict((item.path, item.added)
                                  for item in album.items())
-        for item_path, added_after in items_added_after.iteritems():
+        for item_path, added_after in items_added_after.items():
             self.assertEqualTimes(items_added_before[item_path], added_after,
                                   u"reimport modified Item.added for " +
-                                  item_path)
+                                  util.displayable_path(item_path))
 
     def test_import_singletons_with_added_dates(self):
         self.config['import']['singletons'] = True
@@ -156,20 +156,20 @@ class ImportAddedTest(unittest.TestCase, ImportHelper):
         # Newer Item path mtimes as if Beets had modified them
         modify_mtimes(items_added_before.keys(), offset=10000)
         # Reimport
-        import_dir = os.path.dirname(items_added_before.keys()[0])
+        import_dir = os.path.dirname(list(items_added_before.keys())[0])
         self._setup_import_session(import_dir=import_dir, singletons=True)
         self.importer.run()
         # Verify the reimported items
         items_added_after = dict((item.path, item.added)
                                  for item in self.lib.items())
-        for item_path, added_after in items_added_after.iteritems():
+        for item_path, added_after in items_added_after.items():
             self.assertEqualTimes(items_added_before[item_path], added_after,
                                   u"reimport modified Item.added for " +
-                                  item_path)
+                                  util.displayable_path(item_path))
 
 
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

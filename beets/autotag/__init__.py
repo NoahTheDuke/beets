@@ -52,7 +52,7 @@ def apply_metadata(album_info, mapping):
     """Set the items' metadata to match an AlbumInfo object using a
     mapping from Items to TrackInfo objects.
     """
-    for item, track_info in mapping.iteritems():
+    for item, track_info in mapping.items():
         # Album, artist, track count.
         if track_info.artist:
             item.artist = track_info.artist
@@ -97,8 +97,9 @@ def apply_metadata(album_info, mapping):
         if config['per_disc_numbering']:
             # We want to let the track number be zero, but if the medium index
             # is not provided we need to fall back to the overall index.
-            item.track = track_info.medium_index
-            if item.track is None:
+            if track_info.medium_index is not None:
+                item.track = track_info.medium_index
+            else:
                 item.track = track_info.index
             item.tracktotal = track_info.medium_total or len(album_info.tracks)
         else:

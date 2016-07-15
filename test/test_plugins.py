@@ -26,6 +26,8 @@ from beets import plugins, config, ui
 from beets.library import Item
 from beets.dbcore import types
 from beets.mediafile import MediaFile
+from beets.util import displayable_path, bytestring_path
+
 from test.test_importer import ImportHelper, AutotagStub
 from test.test_ui_importer import TerminalImportSessionSetup
 from test._common import unittest, RSRC
@@ -175,7 +177,7 @@ class EventsTest(unittest.TestCase, ImportHelper, TestHelper):
 
     def __copy_file(self, dest_path, metadata):
         # Copy files
-        resource_path = os.path.join(RSRC, 'full.mp3')
+        resource_path = os.path.join(RSRC, b'full.mp3')
         shutil.copy(resource_path, dest_path)
         medium = MediaFile(dest_path)
         # Set metadata
@@ -184,11 +186,11 @@ class EventsTest(unittest.TestCase, ImportHelper, TestHelper):
         medium.save()
 
     def __create_import_dir(self, count):
-        self.import_dir = os.path.join(self.temp_dir, 'testsrcdir')
+        self.import_dir = os.path.join(self.temp_dir, b'testsrcdir')
         if os.path.isdir(self.import_dir):
             shutil.rmtree(self.import_dir)
 
-        self.album_path = os.path.join(self.import_dir, 'album')
+        self.album_path = os.path.join(self.import_dir, b'album')
         os.makedirs(self.album_path)
 
         metadata = {
@@ -203,8 +205,8 @@ class EventsTest(unittest.TestCase, ImportHelper, TestHelper):
         for i in range(count):
             metadata['track'] = i + 1
             metadata['title'] = u'Tag Title Album %d' % (i + 1)
-            dest_path = os.path.join(self.album_path,
-                                     '%02d - track.mp3' % (i + 1))
+            track_file = bytestring_path('%02d - track.mp3' % (i + 1))
+            dest_path = os.path.join(self.album_path, track_file)
             self.__copy_file(dest_path, metadata)
             self.file_paths.append(dest_path)
 
@@ -224,9 +226,10 @@ class EventsTest(unittest.TestCase, ImportHelper, TestHelper):
         logs = [line for line in logs if not line.startswith(
             u'Sending event:')]
         self.assertEqual(logs, [
-            u'Album: {0}'.format(os.path.join(self.import_dir, 'album')),
-            u'  {0}'.format(self.file_paths[0]),
-            u'  {0}'.format(self.file_paths[1]),
+            u'Album: {0}'.format(displayable_path(
+                os.path.join(self.import_dir, b'album'))),
+            u'  {0}'.format(displayable_path(self.file_paths[0])),
+            u'  {0}'.format(displayable_path(self.file_paths[1])),
         ])
 
     def test_import_task_created_with_plugin(self):
@@ -267,8 +270,8 @@ class EventsTest(unittest.TestCase, ImportHelper, TestHelper):
         logs = [line for line in logs if not line.startswith(
             u'Sending event:')]
         self.assertEqual(logs, [
-            u'Singleton: {0}'.format(self.file_paths[0]),
-            u'Singleton: {0}'.format(self.file_paths[1]),
+            u'Singleton: {0}'.format(displayable_path(self.file_paths[0])),
+            u'Singleton: {0}'.format(displayable_path(self.file_paths[1])),
         ])
 
 
@@ -323,9 +326,9 @@ class ListenersTest(unittest.TestCase, TestHelper):
         class DummyPlugin(plugins.BeetsPlugin):
             def __init__(self):
                 super(DummyPlugin, self).__init__()
-                self.foo = Mock(__name__=b'foo')
+                self.foo = Mock(__name__='foo')
                 self.register_listener('event_foo', self.foo)
-                self.bar = Mock(__name__=b'bar')
+                self.bar = Mock(__name__='bar')
                 self.register_listener('event_bar', self.bar)
 
         d = DummyPlugin()
@@ -559,5 +562,5 @@ class PromptChoicesTest(TerminalImportSessionSetup, unittest.TestCase,
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

@@ -48,7 +48,7 @@ class TypesPluginTest(unittest.TestCase, TestHelper):
 
         # Match in range
         out = self.list(u'myint:1..3')
-        self.assertIn(b'aaa', out)
+        self.assertIn('aaa', out)
 
     def test_album_integer_modify_and_query(self):
         self.config['types'] = {'myint': u'int'}
@@ -64,7 +64,7 @@ class TypesPluginTest(unittest.TestCase, TestHelper):
 
         # Match in range
         out = self.list_album(u'myint:1..3')
-        self.assertIn(b'aaa', out)
+        self.assertIn('aaa', out)
 
     def test_float_modify_and_query(self):
         self.config['types'] = {'myfloat': u'float'}
@@ -76,7 +76,7 @@ class TypesPluginTest(unittest.TestCase, TestHelper):
 
         # Match in range
         out = self.list(u'myfloat:-10..0')
-        self.assertIn(b'aaa', out)
+        self.assertIn('aaa', out)
 
     def test_bool_modify_and_query(self):
         self.config['types'] = {'mybool': u'bool'}
@@ -114,7 +114,7 @@ class TypesPluginTest(unittest.TestCase, TestHelper):
 
         self.modify(u'mydate=1999-01-01', u'artist:prince')
         old.load()
-        self.assertEqual(old['mydate'], mktime(1999, 01, 01))
+        self.assertEqual(old['mydate'], mktime(1999, 1, 1))
 
         self.modify(u'mydate=1999-12-30', u'artist:britney')
         new.load()
@@ -151,5 +151,5 @@ def mktime(*args):
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

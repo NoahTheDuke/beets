@@ -38,6 +38,7 @@ from beets import library
 from beets import config
 from beets import logging
 from beets.util.confit import _package_path
+import six
 
 VARIOUS_ARTISTS = u'Various Artists'
 PromptChoice = namedtuple('ExtraChoice', ['short', 'long', 'callback'])
@@ -85,13 +86,13 @@ def _print_keys(query):
     returned row, with identation of 2 spaces.
     """
     for row in query:
-        print_(' ' * 2 + row[b'key'])
+        print_(u' ' * 2 + row['key'].decode('utf8'))
 
 
 def fields_func(lib, opts, args):
     def _print_rows(names):
         names.sort()
-        print_("  " + "\n  ".join(names))
+        print_(u'  ' + u'\n  '.join(names))
 
     print_(u"Item fields:")
     _print_rows(library.Item.all_keys())
@@ -163,7 +164,7 @@ def disambig_string(info):
             else:
                 disambig.append(info.media)
         if info.year:
-            disambig.append(unicode(info.year))
+            disambig.append(six.text_type(info.year))
         if info.country:
             disambig.append(info.country)
         if info.label:
@@ -236,9 +237,9 @@ def show_change(cur_artist, cur_album, match):
             if mediums > 1:
                 return u'{0}-{1}'.format(medium, medium_index)
             else:
-                return unicode(medium_index)
+                return six.text_type(medium_index or index)
         else:
-            return unicode(index)
+            return six.text_type(index)
 
     # Identify the album in question.
     if cur_artist != match.info.artist or \
@@ -279,8 +280,8 @@ def show_change(cur_artist, cur_album, match):
     print_(' '.join(info))
 
     # Tracks.
-    pairs = match.mapping.items()
-    pairs.sort(key=lambda (_, track_info): track_info.index)
+    pairs = list(match.mapping.items())
+    pairs.sort(key=lambda item_and_track_info: item_and_track_info[1].index)
 
     # Build up LHS and RHS for track difference display. The `lines` list
     # contains ``(lhs, rhs, width)`` tuples where `width` is the length (in
@@ -441,8 +442,10 @@ def summarize_items(items, singleton):
         summary_parts.append(items[0].format)
     else:
         # Enumerate all the formats by decreasing frequencies:
-        for fmt, count in sorted(format_counts.items(),
-                                 key=lambda (f, c): (-c, f)):
+        for fmt, count in sorted(
+            format_counts.items(),
+            key=lambda fmt_and_count: (-fmt_and_count[1], fmt_and_count[0])
+        ):
             summary_parts.append('{0} {1}'.format(fmt, count))
 
     if items:
@@ -752,7 +755,7 @@ class TerminalImportSession(importer.ImportSession):
                     _, _, candidates, rec = autotag.tag_album(
                         task.items, search_ids=search_id.split()
                     )
-            elif choice in extra_ops.keys():
+            elif choice in list(extra_ops.keys()):
                 # Allow extra ops to automatically set the post-choice.
                 post_choice = extra_ops[choice](self, task)
                 if isinstance(post_choice, importer.action):
@@ -769,7 +772,7 @@ class TerminalImportSession(importer.ImportSession):
         either an action constant or a TrackMatch object.
         """
         print_()
-        print_(task.item.path)
+        print_(displayable_path(task.item.path))
         candidates, rec = task.candidates, task.rec
 
         # Take immediate action if appropriate.
@@ -804,7 +807,7 @@ class TerminalImportSession(importer.ImportSession):
                 if search_id:
                     candidates, rec = autotag.tag_item(
                         task.item, search_ids=search_id.split())
-            elif choice in extra_ops.keys():
+            elif choice in list(extra_ops.keys()):
                 # Allow extra ops to automatically set the post-choice.
                 post_choice = extra_ops[choice](self, task)
                 if isinstance(post_choice, importer.action):
@@ -1051,7 +1054,7 @@ default_commands.append(import_cmd)
 
 # list: Query and show library contents.
 
-def list_items(lib, query, album, fmt=''):
+def list_items(lib, query, album, fmt=u''):
     """Print out items in lib matching query. If album, then search for
     albums instead of single items.
     """
@@ -1192,31 +1195,33 @@ default_commands.append(update_cmd)
 
 # remove: Remove items from library, delete files.
 
-def remove_items(lib, query, album, delete):
+def remove_items(lib, query, album, delete, force):
     """Remove items matching query from lib. If album, then match and
     remove whole albums. If delete, also remove files from disk.
     """
     # Get the matching items.
     items, albums = _do_query(lib, query, album)
 
-    # Prepare confirmation with user.
-    print_()
-    if delete:
-        fmt = u'$path - $title'
-        prompt = u'Really DELETE %i file%s (y/n)?' % \
-                 (len(items), 's' if len(items) > 1 else '')
-    else:
-        fmt = ''
-        prompt = u'Really remove %i item%s from the library (y/n)?' % \
-                 (len(items), 's' if len(items) > 1 else '')
+    # Confirm file removal if not forcing removal.
+    if not force:
+        # Prepare confirmation with user.
+        print_()
+        if delete:
+            fmt = u'$path - $title'
+            prompt = u'Really DELETE %i file%s (y/n)?' % \
+                     (len(items), 's' if len(items) > 1 else '')
+        else:
+            fmt = u''
+            prompt = u'Really remove %i item%s from the library (y/n)?' % \
+                     (len(items), 's' if len(items) > 1 else '')
 
-    # Show all the items.
-    for item in items:
-        ui.print_(format(item, fmt))
+        # Show all the items.
+        for item in items:
+            ui.print_(format(item, fmt))
 
-    # Confirm with user.
-    if not ui.input_yn(prompt, True):
-        return
+        # Confirm with user.
+        if not ui.input_yn(prompt, True):
+            return
 
     # Remove (and possibly delete) items.
     with lib.transaction():
@@ -1225,7 +1230,7 @@ def remove_items(lib, query, album, delete):
 
 
 def remove_func(lib, opts, args):
-    remove_items(lib, decargs(args), opts.album, opts.delete)
+    remove_items(lib, decargs(args), opts.album, opts.delete, opts.force)
 
 
 remove_cmd = ui.Subcommand(
@@ -1234,6 +1239,10 @@ remove_cmd = ui.Subcommand(
 remove_cmd.parser.add_option(
     u"-d", u"--delete", action="store_true",
     help=u"also remove files from disk"
+)
+remove_cmd.parser.add_option(
+    u"-f", u"--force", action="store_true",
+    help=u"do not ask when removing items"
 )
 remove_cmd.parser.add_album_option()
 remove_cmd.func = remove_func
@@ -1599,7 +1608,7 @@ def config_func(lib, opts, args):
             filenames.insert(0, user_path)
 
         for filename in filenames:
-            print_(filename)
+            print_(displayable_path(filename))
 
     # Open in editor.
     elif opts.edit:
@@ -1607,7 +1616,8 @@ def config_func(lib, opts, args):
 
     # Dump configuration.
     else:
-        print_(config.dump(full=opts.defaults, redact=opts.redact))
+        config_out = config.dump(full=opts.defaults, redact=opts.redact)
+        print_(util.text_string(config_out))
 
 
 def config_edit():
@@ -1653,7 +1663,7 @@ default_commands.append(config_cmd)
 
 def print_completion(*args):
     for line in completion_script(default_commands + plugins.commands()):
-        print_(line, end='')
+        print_(line, end=u'')
     if not any(map(os.path.isfile, BASH_COMPLETION_PATHS)):
         log.warn(u'Warning: Unable to find the bash-completion package. '
                  u'Command line completion might not work.')
@@ -1661,9 +1671,11 @@ def print_completion(*args):
 BASH_COMPLETION_PATHS = map(syspath, [
     u'/etc/bash_completion',
     u'/usr/share/bash-completion/bash_completion',
-    u'/usr/share/local/bash-completion/bash_completion',
-    u'/opt/local/share/bash-completion/bash_completion',  # SmartOS
-    u'/usr/local/etc/bash_completion',  # Homebrew
+    u'/usr/local/share/bash-completion/bash_completion',
+    # SmartOS
+    u'/opt/local/share/bash-completion/bash_completion',
+    # Homebrew (before bash-completion2)
+    u'/usr/local/etc/bash_completion',
 ])
 
 
@@ -1675,7 +1687,7 @@ def completion_script(commands):
     """
     base_script = os.path.join(_package_path('beets.ui'), 'completion_base.sh')
     with open(base_script, 'r') as base_script:
-        yield base_script.read()
+        yield util.text_string(base_script.read())
 
     options = {}
     aliases = {}
@@ -1690,12 +1702,12 @@ def completion_script(commands):
             if re.match(r'^\w+$', alias):
                 aliases[alias] = name
 
-        options[name] = {'flags': [], 'opts': []}
+        options[name] = {u'flags': [], u'opts': []}
         for opts in cmd.parser._get_all_options()[1:]:
             if opts.action in ('store_true', 'store_false'):
-                option_type = 'flags'
+                option_type = u'flags'
             else:
-                option_type = 'opts'
+                option_type = u'opts'
 
             options[name][option_type].extend(
                 opts._short_opts + opts._long_opts
@@ -1703,14 +1715,14 @@ def completion_script(commands):
 
     # Add global options
     options['_global'] = {
-        'flags': [u'-v', u'--verbose'],
-        'opts': u'-l --library -c --config -d --directory -h --help'.split(
-            u' ')
+        u'flags': [u'-v', u'--verbose'],
+        u'opts':
+            u'-l --library -c --config -d --directory -h --help'.split(u' ')
     }
 
     # Add flags common to all commands
     options['_common'] = {
-        'flags': [u'-h', u'--help']
+        u'flags': [u'-h', u'--help']
     }
 
     # Start generating the script
@@ -1728,14 +1740,17 @@ def completion_script(commands):
 
     # Fields
     yield u"  fields='%s'\n" % ' '.join(
-        set(library.Item._fields.keys() + library.Album._fields.keys())
+        set(
+            list(library.Item._fields.keys()) +
+            list(library.Album._fields.keys())
+        )
     )
 
     # Command options
     for cmd, opts in options.items():
         for option_type, option_list in opts.items():
             if option_list:
-                option_list = ' '.join(option_list)
+                option_list = u' '.join(option_list)
                 yield u"  local %s__%s='%s'\n" % (
                     option_type, cmd, option_list)
 

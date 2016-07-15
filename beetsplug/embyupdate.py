@@ -12,8 +12,8 @@ from __future__ import division, absolute_import, print_function
 
 from beets import config
 from beets.plugins import BeetsPlugin
-from urllib import urlencode
-from urlparse import urljoin, parse_qs, urlsplit, urlunsplit
+from six.moves.urllib.parse import urlencode
+from six.moves.urllib.parse import urljoin, parse_qs, urlsplit, urlunsplit
 import hashlib
 import requests
 
@@ -36,8 +36,8 @@ def password_data(username, password):
     """
     return {
         'username': username,
-        'password': hashlib.sha1(password).hexdigest(),
-        'passwordMd5': hashlib.md5(password).hexdigest()
+        'password': hashlib.sha1(password.encode('utf-8')).hexdigest(),
+        'passwordMd5': hashlib.md5(password.encode('utf-8')).hexdigest()
     }
 
 

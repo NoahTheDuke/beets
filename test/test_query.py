@@ -20,6 +20,7 @@ from __future__ import division, absolute_import, print_function
 from functools import partial
 from mock import patch
 import os
+import sys
 
 from test import _common
 from test._common import unittest
@@ -31,16 +32,19 @@ from beets.dbcore import types
 from beets.dbcore.query import (NoneQuery, ParsingError,
                                 InvalidQueryArgumentTypeError)
 from beets.library import Library, Item
+from beets import util
+import platform
+import six
 
 
 class TestHelper(helper.TestHelper):
 
     def assertInResult(self, item, results):  # noqa
-        result_ids = map(lambda i: i.id, results)
+        result_ids = [i.id for i in results]
         self.assertIn(item.id, result_ids)
 
     def assertNotInResult(self, item, results):  # noqa
-        result_ids = map(lambda i: i.id, results)
+        result_ids = [i.id for i in results]
         self.assertNotIn(item.id, result_ids)
 
 
@@ -299,12 +303,16 @@ class GetTest(DummyDataTestCase):
     def test_invalid_query(self):
         with self.assertRaises(InvalidQueryArgumentTypeError) as raised:
             dbcore.query.NumericQuery('year', u'199a')
-        self.assertIn(u'not an int', unicode(raised.exception))
+        self.assertIn(u'not an int', six.text_type(raised.exception))
 
         with self.assertRaises(InvalidQueryArgumentTypeError) as raised:
             dbcore.query.RegexpQuery('year', u'199(')
-        self.assertIn(u'not a regular expression', unicode(raised.exception))
-        self.assertIn(u'unbalanced parenthesis', unicode(raised.exception))
+        exception_text = six.text_type(raised.exception)
+        self.assertIn(u'not a regular expression', exception_text)
+        if sys.version_info >= (3, 5):
+            self.assertIn(u'unterminated subpattern', exception_text)
+        else:
+            self.assertIn(u'unbalanced parenthesis', exception_text)
         self.assertIsInstance(raised.exception, ParsingError)
 
 
@@ -372,7 +380,7 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
         super(PathQueryTest, self).setUp()
 
         # This is the item we'll try to match.
-        self.i.path = '/a/b/c.mp3'
+        self.i.path = util.normpath('/a/b/c.mp3')
         self.i.title = u'path item'
         self.i.album = u'path album'
         self.i.store()
@@ -380,7 +388,7 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
 
         # A second item for testing exclusion.
         i2 = _common.item()
-        i2.path = '/x/y/z.mp3'
+        i2.path = util.normpath('/x/y/z.mp3')
         i2.title = 'another item'
         i2.album = 'another album'
         self.lib.add(i2)
@@ -490,7 +498,7 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
         self.assert_albums_matched(results, [u'path album'])
 
     def test_escape_underscore(self):
-        self.add_album(path='/a/_/title.mp3', title=u'with underscore',
+        self.add_album(path=b'/a/_/title.mp3', title=u'with underscore',
                        album=u'album with underscore')
         q = u'path:/a/_'
         results = self.lib.items(q)
@@ -500,7 +508,7 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
         self.assert_albums_matched(results, [u'album with underscore'])
 
     def test_escape_percent(self):
-        self.add_album(path='/a/%/title.mp3', title=u'with percent',
+        self.add_album(path=b'/a/%/title.mp3', title=u'with percent',
                        album=u'album with percent')
         q = u'path:/a/%'
         results = self.lib.items(q)
@@ -510,7 +518,7 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
         self.assert_albums_matched(results, [u'album with percent'])
 
     def test_escape_backslash(self):
-        self.add_album(path=r'/a/\x/title.mp3', title=u'with backslash',
+        self.add_album(path=br'/a/\x/title.mp3', title=u'with backslash',
                        album=u'album with backslash')
         q = u'path:/a/\\\\x'
         results = self.lib.items(q)
@@ -520,7 +528,7 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
         self.assert_albums_matched(results, [u'album with backslash'])
 
     def test_case_sensitivity(self):
-        self.add_album(path='/A/B/C2.mp3', title=u'caps path')
+        self.add_album(path=b'/A/B/C2.mp3', title=u'caps path')
 
         makeq = partial(beets.library.PathQuery, u'path', '/A/B')
 
@@ -568,7 +576,10 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
     @patch('beets.library.os')
     def test_path_sep_detection(self, mock_os):
         mock_os.sep = '/'
+        mock_os.altsep = None
+        mock_os.path.exists = lambda p: True
         is_path = beets.library.PathQuery.is_path_query
+
         self.assertTrue(is_path('/foo/bar'))
         self.assertTrue(is_path('foo/bar'))
         self.assertTrue(is_path('foo/'))
@@ -577,27 +588,53 @@ class PathQueryTest(_common.LibTestCase, TestHelper, AssertsMixin):
         self.assertFalse(is_path('foo:bar/'))
         self.assertFalse(is_path('foo:/bar'))
 
-    def test_path_detection(self):
-        # cover existence test
+    def test_detect_absolute_path(self):
+        if platform.system() == 'Windows':
+            # Because the absolute path begins with something like C:, we
+            # can't disambiguate it from an ordinary query.
+            self.skipTest('Windows absolute paths do not work as queries')
+
+        # Don't patch `os.path.exists`; we'll actually create a file when
+        # it exists.
         self.patcher_exists.stop()
         is_path = beets.library.PathQuery.is_path_query
 
         try:
-            self.touch(b'foo/bar')
-            # test absolute
-            self.assertTrue(is_path(os.path.join(self.temp_dir, b'foo/bar')))
-            self.assertTrue(is_path(os.path.join(self.temp_dir, b'foo')))
-            self.assertFalse(is_path(b'foo/bar'))
+            path = self.touch(os.path.join(b'foo', b'bar'))
+            path = path.decode('utf-8')
 
+            # The file itself.
+            self.assertTrue(is_path(path))
+
+            # The parent directory.
+            parent = os.path.dirname(path)
+            self.assertTrue(is_path(parent))
+
+            # Some non-existent path.
+            self.assertFalse(is_path(path + u'baz'))
+
+        finally:
+            # Restart the `os.path.exists` patch.
+            self.patcher_exists.start()
+
+    def test_detect_relative_path(self):
+        self.patcher_exists.stop()
+        is_path = beets.library.PathQuery.is_path_query
+
+        try:
+            self.touch(os.path.join(b'foo', b'bar'))
+
+            # Temporarily change directory so relative paths work.
             cur_dir = os.getcwd()
             try:
                 os.chdir(self.temp_dir)
-                self.assertTrue(is_path(b'foo/'))
-                self.assertTrue(is_path(b'foo/bar'))
-                self.assertTrue(is_path(b'foo/bar:tagada'))
-                self.assertFalse(is_path(b'bar'))
+                self.assertTrue(is_path(u'foo/'))
+                self.assertTrue(is_path(u'foo/bar'))
+                self.assertTrue(is_path(u'foo/bar:tagada'))
+                self.assertFalse(is_path(u'bar'))
             finally:
                 os.chdir(cur_dir)
+
         finally:
             self.patcher_exists.start()
 
@@ -979,5 +1016,5 @@ def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

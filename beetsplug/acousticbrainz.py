@@ -21,8 +21,9 @@ import requests
 import operator
 
 from beets import plugins, ui
+from functools import reduce
 
-ACOUSTIC_BASE = "http://acousticbrainz.org/"
+ACOUSTIC_BASE = "https://acousticbrainz.org/"
 LEVELS = ["/low-level", "/high-level"]
 
 

@@ -27,6 +27,7 @@ import subprocess
 import platform
 import shlex
 from beets.util import hidden
+import six
 
 
 MAX_FILENAME_LENGTH = 200
@@ -65,14 +66,14 @@ class HumanReadableException(Exception):
 
     def _reasonstr(self):
         """Get the reason as a string."""
-        if isinstance(self.reason, unicode):
+        if isinstance(self.reason, six.text_type):
             return self.reason
-        elif isinstance(self.reason, basestring):  # Byte string.
+        elif isinstance(self.reason, bytes):
             return self.reason.decode('utf8', 'ignore')
         elif hasattr(self.reason, 'strerror'):  # i.e., EnvironmentError
             return self.reason.strerror
         else:
-            return u'"{0}"'.format(unicode(self.reason))
+            return u'"{0}"'.format(six.text_type(self.reason))
 
     def get_message(self):
         """Create the human-readable description of the error, sans
@@ -158,8 +159,9 @@ def sorted_walk(path, ignore=(), ignore_hidden=False, logger=None):
     pattern in `ignore` are skipped. If `logger` is provided, then
     warning messages are logged there when a directory cannot be listed.
     """
-    # Make sure the path isn't a Unicode string.
+    # Make sure the pathes aren't Unicode strings.
     path = bytestring_path(path)
+    ignore = [bytestring_path(i) for i in ignore]
 
     # Get all the directories and files at this level.
     try:
@@ -264,6 +266,7 @@ def prune_dirs(path, root=None, clutter=('.DS_Store', 'Thumbs.db')):
         if not os.path.exists(directory):
             # Directory gone already.
             continue
+        clutter = [bytestring_path(c) for c in clutter]
         if fnmatch_all(os.listdir(directory), clutter):
             # Directory contains only clutter (or nothing).
             try:
@@ -303,13 +306,13 @@ def _fsencoding():
     UTF-8 (not MBCS).
     """
     encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
-    if encoding == b'mbcs':
+    if encoding == 'mbcs':
         # On Windows, a broken encoding known to Python as "MBCS" is
         # used for the filesystem. However, we only use the Unicode API
         # for Windows paths, so the encoding is actually immaterial so
         # we can avoid dealing with this nastiness. We arbitrarily
         # choose UTF-8.
-        encoding = b'utf8'
+        encoding = 'utf8'
     return encoding
 
 
@@ -324,7 +327,7 @@ def bytestring_path(path):
     # On Windows, remove the magic prefix added by `syspath`. This makes
     # ``bytestring_path(syspath(X)) == X``, i.e., we can safely
     # round-trip through `syspath`.
-    if os.path.__name__ == b'ntpath' and path.startswith(WINDOWS_MAGIC_PREFIX):
+    if os.path.__name__ == 'ntpath' and path.startswith(WINDOWS_MAGIC_PREFIX):
         path = path[len(WINDOWS_MAGIC_PREFIX):]
 
     # Try to encode with default encodings, but fall back to UTF8.
@@ -334,6 +337,9 @@ def bytestring_path(path):
         return path.encode('utf8')
 
 
+PATH_SEP = bytestring_path(os.sep)
+
+
 def displayable_path(path, separator=u'; '):
     """Attempts to decode a bytestring path to a unicode object for the
     purpose of displaying it to the user. If the `path` argument is a
@@ -341,11 +347,11 @@ def displayable_path(path, separator=u'; '):
     """
     if isinstance(path, (list, tuple)):
         return separator.join(displayable_path(p) for p in path)
-    elif isinstance(path, unicode):
+    elif isinstance(path, six.text_type):
         return path
     elif not isinstance(path, bytes):
         # A non-string object: just get its unicode representation.
-        return unicode(path)
+        return six.text_type(path)
 
     try:
         return path.decode(_fsencoding(), 'ignore')
@@ -361,10 +367,10 @@ def syspath(path, prefix=True):
     *really* know what you're doing.
     """
     # Don't do anything if we're not on windows
-    if os.path.__name__ != b'ntpath':
+    if os.path.__name__ != 'ntpath':
         return path
 
-    if not isinstance(path, unicode):
+    if not isinstance(path, six.text_type):
         # Beets currently represents Windows paths internally with UTF-8
         # arbitrarily. But earlier versions used MBCS because it is
         # reported as the FS encoding by Windows. Try both.
@@ -437,8 +443,7 @@ def move(path, dest, replace=False):
     path = syspath(path)
     dest = syspath(dest)
     if os.path.exists(dest) and not replace:
-        raise FilesystemError(u'file exists', 'rename', (path, dest),
-                              traceback.format_exc())
+        raise FilesystemError(u'file exists', 'rename', (path, dest))
 
     # First, try renaming the file.
     try:
@@ -490,7 +495,8 @@ def unique_path(path):
         num = 0
     while True:
         num += 1
-        new_path = b'%s.%i%s' % (base, num, ext)
+        suffix = u'.{}'.format(num).encode() + ext
+        new_path = base + suffix
         if not os.path.exists(new_path):
             return new_path
 
@@ -618,6 +624,24 @@ def legalize_path(path, replacements, length, extension, fragment):
     return second_stage_path, retruncated
 
 
+def py3_path(path):
+    """Convert a bytestring path to Unicode on Python 3 only. On Python
+    2, return the bytestring path unchanged.
+
+    This helps deal with APIs on Python 3 that *only* accept Unicode
+    (i.e., `str` objects). I philosophically disagree with this
+    decision, because paths are sadly bytes on Unix, but that's the way
+    it is. So this function helps us "smuggle" the true bytes data
+    through APIs that took Python 3's Unicode mandate too seriously.
+    """
+    if isinstance(path, six.text_type):
+        return path
+    assert isinstance(path, bytes)
+    if six.PY2:
+        return path
+    return os.fsdecode(path)
+
+
 def str2bool(value):
     """Returns a boolean reflecting a human-entered string."""
     return value.lower() in (u'yes', u'1', u'true', u't', u'y')
@@ -627,14 +651,31 @@ def as_string(value):
     """Convert a value to a Unicode object for matching with a query.
     None becomes the empty string. Bytestrings are silently decoded.
     """
+    buffer_types = memoryview
+    if six.PY2:
+        buffer_types = (buffer, memoryview)  # noqa ignore=F821
+
     if value is None:
         return u''
-    elif isinstance(value, buffer):
+    elif isinstance(value, buffer_types):
         return bytes(value).decode('utf8', 'ignore')
     elif isinstance(value, bytes):
         return value.decode('utf8', 'ignore')
     else:
-        return unicode(value)
+        return six.text_type(value)
+
+
+def text_string(value, encoding='utf8'):
+    """Convert a string, which can either be bytes or unicode, to
+    unicode.
+
+    Text (unicode) is left untouched; bytes are decoded. This is useful
+    to convert from a "native string" (bytes on Python 2, str on Python
+    3) to a consistently unicode value.
+    """
+    if isinstance(value, bytes):
+        return value.decode(encoding)
+    return value
 
 
 def plurality(objs):
@@ -654,19 +695,19 @@ def cpu_count():
     """
     # Adapted from the soundconverter project:
     # https://github.com/kassoulet/soundconverter
-    if sys.platform == b'win32':
+    if sys.platform == 'win32':
         try:
             num = int(os.environ['NUMBER_OF_PROCESSORS'])
         except (ValueError, KeyError):
             num = 0
-    elif sys.platform == b'darwin':
+    elif sys.platform == 'darwin':
         try:
             num = int(command_output([b'/usr/sbin/sysctl', b'-n', b'hw.ncpu']))
         except (ValueError, OSError, subprocess.CalledProcessError):
             num = 0
     else:
         try:
-            num = os.sysconf(b'SC_NPROCESSORS_ONLN')
+            num = os.sysconf('SC_NPROCESSORS_ONLN')
         except (ValueError, OSError, AttributeError):
             num = 0
     if num >= 1:
@@ -693,7 +734,7 @@ def command_output(cmd, shell=False):
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        close_fds=platform.system() != b'Windows',
+        close_fds=platform.system() != 'Windows',
         shell=shell
     )
     stdout, stderr = proc.communicate()
@@ -713,7 +754,7 @@ def max_filename_length(path, limit=MAX_FILENAME_LENGTH):
     misreports its capacity). If it cannot be determined (e.g., on
     Windows), return `limit`.
     """
-    if hasattr(os, b'statvfs'):
+    if hasattr(os, 'statvfs'):
         try:
             res = os.statvfs(path)
         except OSError:
@@ -756,11 +797,10 @@ def shlex_split(s):
     Raise `ValueError` if the string is not a well-formed shell string.
     This is a workaround for a bug in some versions of Python.
     """
-    if isinstance(s, bytes):
-        # Shlex works fine.
+    if not six.PY2 or isinstance(s, bytes):  # Shlex works fine.
         return shlex.split(s)
 
-    elif isinstance(s, unicode):
+    elif isinstance(s, six.text_type):
         # Work around a Python bug.
         # http://bugs.python.org/issue6988
         bs = s.encode('utf8')
@@ -796,8 +836,8 @@ def _windows_long_path_name(short_path):
     """Use Windows' `GetLongPathNameW` via ctypes to get the canonical,
     long path given a short filename.
     """
-    if not isinstance(short_path, unicode):
-        short_path = unicode(short_path)
+    if not isinstance(short_path, six.text_type):
+        short_path = short_path.decode(_fsencoding())
 
     import ctypes
     buf = ctypes.create_unicode_buffer(260)

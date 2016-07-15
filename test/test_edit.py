@@ -63,7 +63,7 @@ class ModifyFileMocker(object):
         """
         with codecs.open(filename, 'r', encoding='utf8') as f:
             contents = f.read()
-        for old, new_ in self.replacements.iteritems():
+        for old, new_ in self.replacements.items():
             contents = contents.replace(old, new_)
         with codecs.open(filename, 'w', encoding='utf8') as f:
             f.write(contents)
@@ -424,5 +424,5 @@ class EditDuringImporterTest(TerminalImportSessionSetup, unittest.TestCase,
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

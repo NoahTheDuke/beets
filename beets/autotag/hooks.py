@@ -17,14 +17,17 @@
 from __future__ import division, absolute_import, print_function
 
 from collections import namedtuple
+from functools import total_ordering
 import re
 
 from beets import logging
 from beets import plugins
 from beets import config
+from beets.util import as_string
 from beets.autotag import mb
 from jellyfish import levenshtein_distance
 from unidecode import unidecode
+import six
 
 log = logging.getLogger('beets')
 
@@ -203,10 +206,10 @@ def _string_dist_basic(str1, str2):
     transliteration/lowering to ASCII characters. Normalized by string
     length.
     """
-    assert isinstance(str1, unicode)
-    assert isinstance(str2, unicode)
-    str1 = unidecode(str1).decode('ascii')
-    str2 = unidecode(str2).decode('ascii')
+    assert isinstance(str1, six.text_type)
+    assert isinstance(str2, six.text_type)
+    str1 = as_string(unidecode(str1))
+    str2 = as_string(unidecode(str2))
     str1 = re.sub(r'[^a-z0-9]', '', str1.lower())
     str2 = re.sub(r'[^a-z0-9]', '', str2.lower())
     if not str1 and not str2:
@@ -288,6 +291,8 @@ class LazyClassProperty(object):
         return self.value
 
 
+@total_ordering
+@six.python_2_unicode_compatible
 class Distance(object):
     """Keeps track of multiple distance penalties. Provides a single
     weighted distance for all penalties as well as a weighted distance
@@ -323,7 +328,7 @@ class Distance(object):
         """Return the maximum distance penalty (normalization factor).
         """
         dist_max = 0.0
-        for key, penalty in self._penalties.iteritems():
+        for key, penalty in self._penalties.items():
             dist_max += len(penalty) * self._weights[key]
         return dist_max
 
@@ -332,7 +337,7 @@ class Distance(object):
         """Return the raw (denormalized) distance.
         """
         dist_raw = 0.0
-        for key, penalty in self._penalties.iteritems():
+        for key, penalty in self._penalties.items():
             dist_raw += sum(penalty) * self._weights[key]
         return dist_raw
 
@@ -349,12 +354,21 @@ class Distance(object):
         # Convert distance into a negative float we can sort items in
         # ascending order (for keys, when the penalty is equal) and
         # still get the items with the biggest distance first.
-        return sorted(list_, key=lambda (key, dist): (0 - dist, key))
+        return sorted(
+            list_,
+            key=lambda key_and_dist: (-key_and_dist[1], key_and_dist[0])
+        )
+
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return self.distance == other
 
     # Behave like a float.
 
-    def __cmp__(self, other):
-        return cmp(self.distance, other)
+    def __lt__(self, other):
+        return self.distance < other
 
     def __float__(self):
         return self.distance
@@ -365,7 +379,7 @@ class Distance(object):
     def __rsub__(self, other):
         return other - self.distance
 
-    def __unicode__(self):
+    def __str__(self):
         return "{0:.2f}".format(self.distance)
 
     # Behave like a dict.
@@ -395,7 +409,7 @@ class Distance(object):
             raise ValueError(
                 u'`dist` must be a Distance object, not {0}'.format(type(dist))
             )
-        for key, penalties in dist._penalties.iteritems():
+        for key, penalties in dist._penalties.items():
             self._penalties.setdefault(key, []).extend(penalties)
 
     # Adding components.
@@ -539,7 +553,7 @@ def albums_for_id(album_id):
     for a in plugin_albums:
         plugins.send(u'albuminfo_received', info=a)
     candidates.extend(plugin_albums)
-    return filter(None, candidates)
+    return [a for a in candidates if a]
 
 
 def tracks_for_id(track_id):
@@ -549,7 +563,7 @@ def tracks_for_id(track_id):
     for t in plugin_tracks:
         plugins.send(u'trackinfo_received', info=t)
     candidates.extend(plugin_tracks)
-    return filter(None, candidates)
+    return [t for t in candidates if t]
 
 
 def album_candidates(items, artist, album, va_likely):

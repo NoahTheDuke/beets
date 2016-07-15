@@ -24,7 +24,7 @@ import os
 import re
 
 from beets.plugins import BeetsPlugin
-from beets.util import mkdirall, normpath, syspath, bytestring_path
+from beets.util import mkdirall, normpath, syspath, bytestring_path, link
 from beets import config
 
 M3U_DEFAULT_NAME = 'imported.m3u'
@@ -61,7 +61,7 @@ def _write_m3u(m3u_path, items_paths):
     """Append relative paths to items into m3u file.
     """
     mkdirall(m3u_path)
-    with open(syspath(m3u_path), 'a') as f:
+    with open(syspath(m3u_path), 'ab') as f:
         for path in items_paths:
             f.write(path + b'\n')
 
@@ -119,7 +119,7 @@ class ImportFeedsPlugin(BeetsPlugin):
 
         if 'm3u' in formats:
             m3u_basename = bytestring_path(
-                self.config['m3u_name'].get(unicode))
+                self.config['m3u_name'].as_str())
             m3u_path = os.path.join(feedsdir, m3u_basename)
             _write_m3u(m3u_path, paths)
 
@@ -131,7 +131,7 @@ class ImportFeedsPlugin(BeetsPlugin):
             for path in paths:
                 dest = os.path.join(feedsdir, os.path.basename(path))
                 if not os.path.exists(syspath(dest)):
-                    os.symlink(syspath(path), syspath(dest))
+                    link(path, dest)
 
         if 'echo' in formats:
             self._log.info(u"Location of imported music:")

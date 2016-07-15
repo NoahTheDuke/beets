@@ -83,6 +83,8 @@ have multiple paths, format them as a YAML list like so::
         - /path/one
         - /path/two
 
+.. _ignore:
+
 ignore
 ~~~~~~
 
@@ -91,6 +93,8 @@ importing. By default, this consists of ``.*``,  ``*~``,  ``System Volume
 Information``, ``lost+found`` (i.e., beets ignores Unix-style hidden files,
 backup files, and directories that appears at the root of some Linux and Windows
 filesystems).
+
+.. _ignore_hidden:
 
 ignore_hidden
 ~~~~~~~~~~~~~
@@ -545,6 +549,17 @@ disabling autotagging by setting this option to ``no``. (You can re-enable it
 with the ``-a`` flag to the :ref:`import-cmd` command.)
 
 Default: ``yes``.
+
+.. _duplicate_action:
+
+duplicate_action
+~~~~~~~~~~~~~~~~
+
+Either ``skip``, ``keep``, ``remove``, or ``ask``. Controls how duplicates
+are treated in import task. "skip" means that new item(album or track) will be
+skiped; "keep" means keep both old and new items; "remove" means remove old
+item; "ask" means the user should be prompted for the action each time.
+The default is ``ask``.
 
 
 .. _musicbrainz-config:

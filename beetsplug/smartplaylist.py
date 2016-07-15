@@ -20,11 +20,12 @@ from __future__ import division, absolute_import, print_function
 
 from beets.plugins import BeetsPlugin
 from beets import ui
-from beets.util import mkdirall, normpath, syspath
+from beets.util import mkdirall, normpath, syspath, bytestring_path
 from beets.library import Item, Album, parse_query_string
 from beets.dbcore import OrQuery
 from beets.dbcore.query import MultipleSort, ParsingError
 import os
+import six
 
 
 class SmartPlaylistPlugin(BeetsPlugin):
@@ -106,7 +107,7 @@ class SmartPlaylistPlugin(BeetsPlugin):
                     qs = playlist.get(key)
                     if qs is None:
                         query_and_sort = None, None
-                    elif isinstance(qs, basestring):
+                    elif isinstance(qs, six.string_types):
                         query_and_sort = parse_query_string(qs, Model)
                     elif len(qs) == 1:
                         query_and_sort = parse_query_string(qs[0], Model)
@@ -165,6 +166,7 @@ class SmartPlaylistPlugin(BeetsPlugin):
                        len(self._matched_playlists))
 
         playlist_dir = self.config['playlist_dir'].as_filename()
+        playlist_dir = bytestring_path(playlist_dir)
         relative_to = self.config['relative_to'].get()
         if relative_to:
             relative_to = normpath(relative_to)
@@ -194,9 +196,11 @@ class SmartPlaylistPlugin(BeetsPlugin):
                     m3us[m3u_name].append(item_path)
             # Now iterate through the m3us that we need to generate
             for m3u in m3us:
-                m3u_path = normpath(os.path.join(playlist_dir, m3u))
+                m3u_path = normpath(os.path.join(playlist_dir,
+                                    bytestring_path(m3u)))
                 mkdirall(m3u_path)
-                with open(syspath(m3u_path), 'w') as f:
+                with open(syspath(m3u_path), 'wb') as f:
                     for path in m3us[m3u]:
                         f.write(path + b'\n')
+
         self._log.info(u"{0} playlists updated", len(self._matched_playlists))

@@ -49,7 +49,7 @@ class ListTest(unittest.TestCase):
         self.lib.add(self.item)
         self.lib.add_album([self.item])
 
-    def _run_list(self, query=u'', album=False, path=False, fmt=''):
+    def _run_list(self, query=u'', album=False, path=False, fmt=u''):
         commands.list_items(self.lib, query, album, fmt)
 
     def test_list_outputs_item(self):
@@ -69,7 +69,7 @@ class ListTest(unittest.TestCase):
 
     def test_list_item_path(self):
         with capture_stdout() as stdout:
-            self._run_list(fmt='$path')
+            self._run_list(fmt=u'$path')
         self.assertEqual(stdout.getvalue().strip(), u'xxx/yyy')
 
     def test_list_album_outputs_something(self):
@@ -79,7 +79,7 @@ class ListTest(unittest.TestCase):
 
     def test_list_album_path(self):
         with capture_stdout() as stdout:
-            self._run_list(album=True, fmt='$path')
+            self._run_list(album=True, fmt=u'$path')
         self.assertEqual(stdout.getvalue().strip(), u'xxx')
 
     def test_list_album_omits_title(self):
@@ -101,18 +101,18 @@ class ListTest(unittest.TestCase):
 
     def test_list_item_format_artist(self):
         with capture_stdout() as stdout:
-            self._run_list(fmt='$artist')
+            self._run_list(fmt=u'$artist')
         self.assertIn(u'the artist', stdout.getvalue())
 
     def test_list_item_format_multiple(self):
         with capture_stdout() as stdout:
-            self._run_list(fmt='$artist - $album - $year')
+            self._run_list(fmt=u'$artist - $album - $year')
         self.assertEqual(u'the artist - the album - 0001',
                          stdout.getvalue().strip())
 
     def test_list_album_format(self):
         with capture_stdout() as stdout:
-            self._run_list(album=True, fmt='$genre')
+            self._run_list(album=True, fmt=u'$genre')
         self.assertIn(u'the genre', stdout.getvalue())
         self.assertNotIn(u'the album', stdout.getvalue())
 
@@ -123,25 +123,38 @@ class RemoveTest(_common.TestCase):
 
         self.io.install()
 
-        self.libdir = os.path.join(self.temp_dir, 'testlibdir')
+        self.libdir = os.path.join(self.temp_dir, b'testlibdir')
         os.mkdir(self.libdir)
 
         # Copy a file into the library.
         self.lib = library.Library(':memory:', self.libdir)
-        self.i = library.Item.from_path(os.path.join(_common.RSRC, 'full.mp3'))
+        item_path = os.path.join(_common.RSRC, b'full.mp3')
+        self.i = library.Item.from_path(item_path)
         self.lib.add(self.i)
         self.i.move(True)
 
     def test_remove_items_no_delete(self):
         self.io.addinput('y')
-        commands.remove_items(self.lib, u'', False, False)
+        commands.remove_items(self.lib, u'', False, False, False)
         items = self.lib.items()
         self.assertEqual(len(list(items)), 0)
         self.assertTrue(os.path.exists(self.i.path))
 
     def test_remove_items_with_delete(self):
         self.io.addinput('y')
-        commands.remove_items(self.lib, u'', False, True)
+        commands.remove_items(self.lib, u'', False, True, False)
+        items = self.lib.items()
+        self.assertEqual(len(list(items)), 0)
+        self.assertFalse(os.path.exists(self.i.path))
+
+    def test_remove_items_with_force_no_delete(self):
+        commands.remove_items(self.lib, u'', False, False, True)
+        items = self.lib.items()
+        self.assertEqual(len(list(items)), 0)
+        self.assertTrue(os.path.exists(self.i.path))
+
+    def test_remove_items_with_force_delete(self):
+        commands.remove_items(self.lib, u'', False, True, True)
         items = self.lib.items()
         self.assertEqual(len(list(items)), 0)
         self.assertFalse(os.path.exists(self.i.path))
@@ -399,11 +412,11 @@ class MoveTest(_common.TestCase):
 
         self.io.install()
 
-        self.libdir = os.path.join(self.temp_dir, 'testlibdir')
+        self.libdir = os.path.join(self.temp_dir, b'testlibdir')
         os.mkdir(self.libdir)
 
-        self.itempath = os.path.join(self.libdir, 'srcfile')
-        shutil.copy(os.path.join(_common.RSRC, 'full.mp3'), self.itempath)
+        self.itempath = os.path.join(self.libdir, b'srcfile')
+        shutil.copy(os.path.join(_common.RSRC, b'full.mp3'), self.itempath)
 
         # Add a file to the library but don't copy it in yet.
         self.lib = library.Library(':memory:', self.libdir)
@@ -412,7 +425,7 @@ class MoveTest(_common.TestCase):
         self.album = self.lib.add_album([self.i])
 
         # Alternate destination directory.
-        self.otherdir = os.path.join(self.temp_dir, 'testotherdir')
+        self.otherdir = os.path.join(self.temp_dir, b'testotherdir')
 
     def _move(self, query=(), dest=None, copy=False, album=False,
               pretend=False):
@@ -421,54 +434,54 @@ class MoveTest(_common.TestCase):
     def test_move_item(self):
         self._move()
         self.i.load()
-        self.assertTrue('testlibdir' in self.i.path)
+        self.assertTrue(b'testlibdir' in self.i.path)
         self.assertExists(self.i.path)
         self.assertNotExists(self.itempath)
 
     def test_copy_item(self):
         self._move(copy=True)
         self.i.load()
-        self.assertTrue('testlibdir' in self.i.path)
+        self.assertTrue(b'testlibdir' in self.i.path)
         self.assertExists(self.i.path)
         self.assertExists(self.itempath)
 
     def test_move_album(self):
         self._move(album=True)
         self.i.load()
-        self.assertTrue('testlibdir' in self.i.path)
+        self.assertTrue(b'testlibdir' in self.i.path)
         self.assertExists(self.i.path)
         self.assertNotExists(self.itempath)
 
     def test_copy_album(self):
         self._move(copy=True, album=True)
         self.i.load()
-        self.assertTrue('testlibdir' in self.i.path)
+        self.assertTrue(b'testlibdir' in self.i.path)
         self.assertExists(self.i.path)
         self.assertExists(self.itempath)
 
     def test_move_item_custom_dir(self):
         self._move(dest=self.otherdir)
         self.i.load()
-        self.assertTrue('testotherdir' in self.i.path)
+        self.assertTrue(b'testotherdir' in self.i.path)
         self.assertExists(self.i.path)
         self.assertNotExists(self.itempath)
 
     def test_move_album_custom_dir(self):
         self._move(dest=self.otherdir, album=True)
         self.i.load()
-        self.assertTrue('testotherdir' in self.i.path)
+        self.assertTrue(b'testotherdir' in self.i.path)
         self.assertExists(self.i.path)
         self.assertNotExists(self.itempath)
 
     def test_pretend_move_item(self):
         self._move(dest=self.otherdir, pretend=True)
         self.i.load()
-        self.assertIn('srcfile', self.i.path)
+        self.assertIn(b'srcfile', self.i.path)
 
     def test_pretend_move_album(self):
         self._move(album=True, pretend=True)
         self.i.load()
-        self.assertIn('srcfile', self.i.path)
+        self.assertIn(b'srcfile', self.i.path)
 
 
 class UpdateTest(_common.TestCase):
@@ -477,17 +490,18 @@ class UpdateTest(_common.TestCase):
 
         self.io.install()
 
-        self.libdir = os.path.join(self.temp_dir, 'testlibdir')
+        self.libdir = os.path.join(self.temp_dir, b'testlibdir')
 
         # Copy a file into the library.
         self.lib = library.Library(':memory:', self.libdir)
-        self.i = library.Item.from_path(os.path.join(_common.RSRC, 'full.mp3'))
+        item_path = os.path.join(_common.RSRC, b'full.mp3')
+        self.i = library.Item.from_path(item_path)
         self.lib.add(self.i)
         self.i.move(True)
         self.album = self.lib.add_album([self.i])
 
         # Album art.
-        artfile = os.path.join(self.temp_dir, 'testart.jpg')
+        artfile = os.path.join(self.temp_dir, b'testart.jpg')
         _common.touch(artfile)
         self.album.set_art(artfile)
         self.album.store()
@@ -533,7 +547,7 @@ class UpdateTest(_common.TestCase):
         mf.save()
         self._update(move=True)
         item = self.lib.items().get()
-        self.assertTrue(u'differentTitle' in item.path)
+        self.assertTrue(b'differentTitle' in item.path)
 
     def test_modified_metadata_not_moved(self):
         mf = MediaFile(self.i.path)
@@ -541,7 +555,7 @@ class UpdateTest(_common.TestCase):
         mf.save()
         self._update(move=False)
         item = self.lib.items().get()
-        self.assertTrue(u'differentTitle' not in item.path)
+        self.assertTrue(b'differentTitle' not in item.path)
 
     def test_modified_album_metadata_moved(self):
         mf = MediaFile(self.i.path)
@@ -549,7 +563,7 @@ class UpdateTest(_common.TestCase):
         mf.save()
         self._update(move=True)
         item = self.lib.items().get()
-        self.assertTrue(u'differentAlbum' in item.path)
+        self.assertTrue(b'differentAlbum' in item.path)
 
     def test_modified_album_metadata_art_moved(self):
         artpath = self.album.artpath
@@ -635,7 +649,7 @@ class InputTest(_common.TestCase):
 
 
 @_common.slow_test()
-class ConfigTest(unittest.TestCase, TestHelper):
+class ConfigTest(unittest.TestCase, TestHelper, _common.Assertions):
     def setUp(self):
         self.setup_beets()
 
@@ -643,7 +657,12 @@ class ConfigTest(unittest.TestCase, TestHelper):
         # directory there. Some tests will set `BEETSDIR` themselves.
         del os.environ['BEETSDIR']
         self._old_home = os.environ.get('HOME')
-        os.environ['HOME'] = self.temp_dir
+        os.environ['HOME'] = util.py3_path(self.temp_dir)
+
+        # Also set APPDATA, the Windows equivalent of setting $HOME.
+        self._old_appdata = os.environ.get('APPDATA')
+        os.environ['APPDATA'] = \
+            util.py3_path(os.path.join(self.temp_dir, b'AppData', b'Roaming'))
 
         self._orig_cwd = os.getcwd()
         self.test_cmd = self._make_test_cmd()
@@ -652,18 +671,18 @@ class ConfigTest(unittest.TestCase, TestHelper):
         # Default user configuration
         if platform.system() == 'Windows':
             self.user_config_dir = os.path.join(
-                self.temp_dir, 'AppData', 'Roaming', 'beets'
+                self.temp_dir, b'AppData', b'Roaming', b'beets'
             )
         else:
             self.user_config_dir = os.path.join(
-                self.temp_dir, '.config', 'beets'
+                self.temp_dir, b'.config', b'beets'
             )
         os.makedirs(self.user_config_dir)
         self.user_config_path = os.path.join(self.user_config_dir,
-                                             'config.yaml')
+                                             b'config.yaml')
 
         # Custom BEETSDIR
-        self.beetsdir = os.path.join(self.temp_dir, 'beetsdir')
+        self.beetsdir = os.path.join(self.temp_dir, b'beetsdir')
         os.makedirs(self.beetsdir)
 
         self._reset_config()
@@ -673,6 +692,10 @@ class ConfigTest(unittest.TestCase, TestHelper):
         os.chdir(self._orig_cwd)
         if self._old_home is not None:
             os.environ['HOME'] = self._old_home
+        if self._old_appdata is None:
+            del os.environ['APPDATA']
+        else:
+            os.environ['APPDATA'] = self._old_appdata
         self.teardown_beets()
 
     def _make_test_cmd(self):
@@ -737,7 +760,7 @@ class ConfigTest(unittest.TestCase, TestHelper):
 
         ui._raw_main(['test'])
         replacements = self.test_cmd.lib.replacements
-        self.assertEqual(replacements, [(re.compile(ur'[xy]'), b'z')])
+        self.assertEqual(replacements, [(re.compile(u'[xy]'), 'z')])
 
     def test_multiple_replacements_parsed(self):
         with self.write_config_file() as config:
@@ -746,12 +769,12 @@ class ConfigTest(unittest.TestCase, TestHelper):
         ui._raw_main(['test'])
         replacements = self.test_cmd.lib.replacements
         self.assertEqual(replacements, [
-            (re.compile(ur'[xy]'), u'z'),
-            (re.compile(ur'foo'), u'bar'),
+            (re.compile(u'[xy]'), u'z'),
+            (re.compile(u'foo'), u'bar'),
         ])
 
     def test_cli_config_option(self):
-        config_path = os.path.join(self.temp_dir, 'config.yaml')
+        config_path = os.path.join(self.temp_dir, b'config.yaml')
         with open(config_path, 'w') as file:
             file.write('anoption: value')
 
@@ -762,7 +785,7 @@ class ConfigTest(unittest.TestCase, TestHelper):
         with open(self.user_config_path, 'w') as file:
             file.write('anoption: value')
 
-        cli_config_path = os.path.join(self.temp_dir, 'config.yaml')
+        cli_config_path = os.path.join(self.temp_dir, b'config.yaml')
         with open(cli_config_path, 'w') as file:
             file.write('anoption: cli overwrite')
 
@@ -770,12 +793,12 @@ class ConfigTest(unittest.TestCase, TestHelper):
         self.assertEqual(config['anoption'].get(), 'cli overwrite')
 
     def test_cli_config_file_overwrites_beetsdir_defaults(self):
-        os.environ['BEETSDIR'] = self.beetsdir
-        env_config_path = os.path.join(self.beetsdir, 'config.yaml')
+        os.environ['BEETSDIR'] = util.py3_path(self.beetsdir)
+        env_config_path = os.path.join(self.beetsdir, b'config.yaml')
         with open(env_config_path, 'w') as file:
             file.write('anoption: value')
 
-        cli_config_path = os.path.join(self.temp_dir, 'config.yaml')
+        cli_config_path = os.path.join(self.temp_dir, b'config.yaml')
         with open(cli_config_path, 'w') as file:
             file.write('anoption: cli overwrite')
 
@@ -784,8 +807,8 @@ class ConfigTest(unittest.TestCase, TestHelper):
 
 #    @unittest.skip('Difficult to implement with optparse')
 #    def test_multiple_cli_config_files(self):
-#        cli_config_path_1 = os.path.join(self.temp_dir, 'config.yaml')
-#        cli_config_path_2 = os.path.join(self.temp_dir, 'config_2.yaml')
+#        cli_config_path_1 = os.path.join(self.temp_dir, b'config.yaml')
+#        cli_config_path_2 = os.path.join(self.temp_dir, b'config_2.yaml')
 #
 #        with open(cli_config_path_1, 'w') as file:
 #            file.write('first: value')
@@ -800,9 +823,9 @@ class ConfigTest(unittest.TestCase, TestHelper):
 #
 #    @unittest.skip('Difficult to implement with optparse')
 #    def test_multiple_cli_config_overwrite(self):
-#        cli_config_path = os.path.join(self.temp_dir, 'config.yaml')
+#        cli_config_path = os.path.join(self.temp_dir, b'config.yaml')
 #        cli_overwrite_config_path = os.path.join(self.temp_dir,
-#                                                 'overwrite_config.yaml')
+#                                                 b'overwrite_config.yaml')
 #
 #        with open(cli_config_path, 'w') as file:
 #            file.write('anoption: value')
@@ -815,52 +838,58 @@ class ConfigTest(unittest.TestCase, TestHelper):
 #        self.assertEqual(config['anoption'].get(), 'cli overwrite')
 
     def test_cli_config_paths_resolve_relative_to_user_dir(self):
-        cli_config_path = os.path.join(self.temp_dir, 'config.yaml')
+        cli_config_path = os.path.join(self.temp_dir, b'config.yaml')
         with open(cli_config_path, 'w') as file:
             file.write('library: beets.db\n')
             file.write('statefile: state')
 
         ui._raw_main(['--config', cli_config_path, 'test'])
-        self.assertEqual(config['library'].as_filename(),
-                         os.path.join(self.user_config_dir, 'beets.db'))
-        self.assertEqual(config['statefile'].as_filename(),
-                         os.path.join(self.user_config_dir, 'state'))
+        self.assert_equal_path(
+            util.bytestring_path(config['library'].as_filename()),
+            os.path.join(self.user_config_dir, b'beets.db')
+        )
+        self.assert_equal_path(
+            util.bytestring_path(config['statefile'].as_filename()),
+            os.path.join(self.user_config_dir, b'state')
+        )
 
     def test_cli_config_paths_resolve_relative_to_beetsdir(self):
-        os.environ['BEETSDIR'] = self.beetsdir
+        os.environ['BEETSDIR'] = util.py3_path(self.beetsdir)
 
-        cli_config_path = os.path.join(self.temp_dir, 'config.yaml')
+        cli_config_path = os.path.join(self.temp_dir, b'config.yaml')
         with open(cli_config_path, 'w') as file:
             file.write('library: beets.db\n')
             file.write('statefile: state')
 
         ui._raw_main(['--config', cli_config_path, 'test'])
-        self.assertEqual(config['library'].as_filename(),
-                         os.path.join(self.beetsdir, 'beets.db'))
-        self.assertEqual(config['statefile'].as_filename(),
-                         os.path.join(self.beetsdir, 'state'))
+        self.assert_equal_path(
+            util.bytestring_path(config['library'].as_filename()),
+            os.path.join(self.beetsdir, b'beets.db')
+        )
+        self.assert_equal_path(
+            util.bytestring_path(config['statefile'].as_filename()),
+            os.path.join(self.beetsdir, b'state')
+        )
 
     def test_command_line_option_relative_to_working_dir(self):
         os.chdir(self.temp_dir)
         ui._raw_main(['--library', 'foo.db', 'test'])
-        self.assertEqual(config['library'].as_filename(),
-                         os.path.join(os.getcwd(), 'foo.db'))
+        self.assert_equal_path(config['library'].as_filename(),
+                               os.path.join(os.getcwd(), 'foo.db'))
 
     def test_cli_config_file_loads_plugin_commands(self):
-        plugin_path = os.path.join(_common.RSRC, 'beetsplug')
-
-        cli_config_path = os.path.join(self.temp_dir, 'config.yaml')
+        cli_config_path = os.path.join(self.temp_dir, b'config.yaml')
         with open(cli_config_path, 'w') as file:
-            file.write('pluginpath: %s\n' % plugin_path)
+            file.write('pluginpath: %s\n' % _common.PLUGINPATH)
             file.write('plugins: test')
 
         ui._raw_main(['--config', cli_config_path, 'plugin'])
         self.assertTrue(plugins.find_plugins()[0].is_test_plugin)
 
     def test_beetsdir_config(self):
-        os.environ['BEETSDIR'] = self.beetsdir
+        os.environ['BEETSDIR'] = util.py3_path(self.beetsdir)
 
-        env_config_path = os.path.join(self.beetsdir, 'config.yaml')
+        env_config_path = os.path.join(self.beetsdir, b'config.yaml')
         with open(env_config_path, 'w') as file:
             file.write('anoption: overwrite')
 
@@ -868,13 +897,13 @@ class ConfigTest(unittest.TestCase, TestHelper):
         self.assertEqual(config['anoption'].get(), 'overwrite')
 
     def test_beetsdir_points_to_file_error(self):
-        beetsdir = os.path.join(self.temp_dir, 'beetsfile')
+        beetsdir = os.path.join(self.temp_dir, b'beetsfile')
         open(beetsdir, 'a').close()
-        os.environ['BEETSDIR'] = beetsdir
+        os.environ['BEETSDIR'] = util.py3_path(beetsdir)
         self.assertRaises(ConfigError, ui._raw_main, ['test'])
 
     def test_beetsdir_config_does_not_load_default_user_config(self):
-        os.environ['BEETSDIR'] = self.beetsdir
+        os.environ['BEETSDIR'] = util.py3_path(self.beetsdir)
 
         with open(self.user_config_path, 'w') as file:
             file.write('anoption: value')
@@ -883,27 +912,35 @@ class ConfigTest(unittest.TestCase, TestHelper):
         self.assertFalse(config['anoption'].exists())
 
     def test_default_config_paths_resolve_relative_to_beetsdir(self):
-        os.environ['BEETSDIR'] = self.beetsdir
+        os.environ['BEETSDIR'] = util.py3_path(self.beetsdir)
 
         config.read()
-        self.assertEqual(config['library'].as_filename(),
-                         os.path.join(self.beetsdir, 'library.db'))
-        self.assertEqual(config['statefile'].as_filename(),
-                         os.path.join(self.beetsdir, 'state.pickle'))
+        self.assert_equal_path(
+            util.bytestring_path(config['library'].as_filename()),
+            os.path.join(self.beetsdir, b'library.db')
+        )
+        self.assert_equal_path(
+            util.bytestring_path(config['statefile'].as_filename()),
+            os.path.join(self.beetsdir, b'state.pickle')
+        )
 
     def test_beetsdir_config_paths_resolve_relative_to_beetsdir(self):
-        os.environ['BEETSDIR'] = self.beetsdir
+        os.environ['BEETSDIR'] = util.py3_path(self.beetsdir)
 
-        env_config_path = os.path.join(self.beetsdir, 'config.yaml')
+        env_config_path = os.path.join(self.beetsdir, b'config.yaml')
         with open(env_config_path, 'w') as file:
             file.write('library: beets.db\n')
             file.write('statefile: state')
 
         config.read()
-        self.assertEqual(config['library'].as_filename(),
-                         os.path.join(self.beetsdir, 'beets.db'))
-        self.assertEqual(config['statefile'].as_filename(),
-                         os.path.join(self.beetsdir, 'state'))
+        self.assert_equal_path(
+            util.bytestring_path(config['library'].as_filename()),
+            os.path.join(self.beetsdir, b'beets.db')
+        )
+        self.assert_equal_path(
+            util.bytestring_path(config['statefile'].as_filename()),
+            os.path.join(self.beetsdir, b'state')
+        )
 
 
 class ShowModelChangeTest(_common.TestCase):
@@ -965,7 +1002,7 @@ class ShowChangeTest(_common.TestCase):
 
         self.items = [_common.item()]
         self.items[0].track = 1
-        self.items[0].path = '/path/to/file.mp3'
+        self.items[0].path = b'/path/to/file.mp3'
         self.info = autotag.AlbumInfo(
             u'the album', u'album id', u'the artist', u'artist id', [
                 autotag.TrackInfo(u'the title', u'track id', index=1)
@@ -988,7 +1025,7 @@ class ShowChangeTest(_common.TestCase):
             autotag.AlbumMatch(album_dist, info, mapping, set(), set()),
         )
         # FIXME decoding shouldn't be done here
-        return self.io.getoutput().lower().decode('utf8')
+        return util.text_string(self.io.getoutput().lower())
 
     def test_null_change(self):
         msg = self._show_change()
@@ -1080,7 +1117,7 @@ class PathFormatTest(_common.TestCase):
 @_common.slow_test()
 class PluginTest(_common.TestCase):
     def test_plugin_command_from_pluginpath(self):
-        config['pluginpath'] = [os.path.join(_common.RSRC, 'beetsplug')]
+        config['pluginpath'] = [_common.PLUGINPATH]
         config['plugins'] = ['test']
         ui._raw_main(['test'])
 
@@ -1089,7 +1126,7 @@ class PluginTest(_common.TestCase):
 class CompletionTest(_common.TestCase):
     def test_completion(self):
         # Load plugin commands
-        config['pluginpath'] = [os.path.join(_common.RSRC, 'beetsplug')]
+        config['pluginpath'] = [_common.PLUGINPATH]
         config['plugins'] = ['test']
 
         # Tests run in bash
@@ -1120,7 +1157,7 @@ class CompletionTest(_common.TestCase):
         tester.stdin.writelines(completion_script)
 
         # Load test suite.
-        test_script = os.path.join(_common.RSRC, 'test_completion.sh')
+        test_script = os.path.join(_common.RSRC, b'test_completion.sh')
         with open(test_script, 'r') as test_script:
             tester.stdin.writelines(test_script)
         (out, err) = tester.communicate()
@@ -1137,7 +1174,7 @@ class CommonOptionsParserCliTest(unittest.TestCase, TestHelper):
         self.setup_beets()
         self.lib = library.Library(':memory:')
         self.item = _common.item()
-        self.item.path = 'xxx/yyy'
+        self.item.path = b'xxx/yyy'
         self.lib.add(self.item)
         self.lib.add_album([self.item])
 
@@ -1159,11 +1196,16 @@ class CommonOptionsParserCliTest(unittest.TestCase, TestHelper):
         self.assertEqual(l, u'xxx\n')
 
     def test_format_option(self):
-        l = self.run_with_output(u'ls', u'-f', '$artist')
+        l = self.run_with_output(u'ls', u'-f', u'$artist')
         self.assertEqual(l, u'the artist\n')
 
-        l = self.run_with_output(u'ls', u'-a', u'-f', '$albumartist')
+        l = self.run_with_output(u'ls', u'-a', u'-f', u'$albumartist')
         self.assertEqual(l, u'the album artist\n')
+
+    def test_format_option_unicode(self):
+        l = self.run_with_output(b'ls', b'-f',
+                                 u'caf\xe9'.encode(ui._arg_encoding()))
+        self.assertEqual(l, u'caf\xe9\n')
 
     def test_root_format_option(self):
         l = self.run_with_output(u'--format-item', u'$artist',
@@ -1227,15 +1269,15 @@ class CommonOptionsParserTest(unittest.TestCase, TestHelper):
 
         config['format_item'].set('$foo')
         self.assertEqual(parser.parse_args([]), ({'path': None}, []))
-        self.assertEqual(config['format_item'].get(unicode), u'$foo')
+        self.assertEqual(config['format_item'].as_str(), u'$foo')
 
         self.assertEqual(parser.parse_args([u'-p']),
                          ({'path': True, 'format': u'$path'}, []))
         self.assertEqual(parser.parse_args(['--path']),
                          ({'path': True, 'format': u'$path'}, []))
 
-        self.assertEqual(config['format_item'].get(unicode), u'$path')
-        self.assertEqual(config['format_album'].get(unicode), u'$path')
+        self.assertEqual(config['format_item'].as_str(), u'$path')
+        self.assertEqual(config['format_album'].as_str(), u'$path')
 
     def test_format_option(self):
         parser = ui.CommonOptionsParser()
@@ -1244,15 +1286,15 @@ class CommonOptionsParserTest(unittest.TestCase, TestHelper):
 
         config['format_item'].set('$foo')
         self.assertEqual(parser.parse_args([]), ({'format': None}, []))
-        self.assertEqual(config['format_item'].get(unicode), u'$foo')
+        self.assertEqual(config['format_item'].as_str(), u'$foo')
 
         self.assertEqual(parser.parse_args([u'-f', u'$bar']),
                          ({'format': u'$bar'}, []))
         self.assertEqual(parser.parse_args([u'--format', u'$baz']),
                          ({'format': u'$baz'}, []))
 
-        self.assertEqual(config['format_item'].get(unicode), u'$baz')
-        self.assertEqual(config['format_album'].get(unicode), u'$baz')
+        self.assertEqual(config['format_item'].as_str(), u'$baz')
+        self.assertEqual(config['format_album'].as_str(), u'$baz')
 
     def test_format_option_with_target(self):
         with self.assertRaises(KeyError):
@@ -1267,8 +1309,8 @@ class CommonOptionsParserTest(unittest.TestCase, TestHelper):
         self.assertEqual(parser.parse_args([u'-f', u'$bar']),
                          ({'format': u'$bar'}, []))
 
-        self.assertEqual(config['format_item'].get(unicode), u'$bar')
-        self.assertEqual(config['format_album'].get(unicode), u'$album')
+        self.assertEqual(config['format_item'].as_str(), u'$bar')
+        self.assertEqual(config['format_album'].as_str(), u'$album')
 
     def test_format_option_with_album(self):
         parser = ui.CommonOptionsParser()
@@ -1279,15 +1321,15 @@ class CommonOptionsParserTest(unittest.TestCase, TestHelper):
         config['format_album'].set('$album')
 
         parser.parse_args([u'-f', u'$bar'])
-        self.assertEqual(config['format_item'].get(unicode), u'$bar')
-        self.assertEqual(config['format_album'].get(unicode), u'$album')
+        self.assertEqual(config['format_item'].as_str(), u'$bar')
+        self.assertEqual(config['format_album'].as_str(), u'$album')
 
         parser.parse_args([u'-a', u'-f', u'$foo'])
-        self.assertEqual(config['format_item'].get(unicode), u'$bar')
-        self.assertEqual(config['format_album'].get(unicode), u'$foo')
+        self.assertEqual(config['format_item'].as_str(), u'$bar')
+        self.assertEqual(config['format_album'].as_str(), u'$foo')
 
         parser.parse_args([u'-f', u'$foo2', u'-a'])
-        self.assertEqual(config['format_album'].get(unicode), u'$foo2')
+        self.assertEqual(config['format_album'].as_str(), u'$foo2')
 
     def test_add_all_common_options(self):
         parser = ui.CommonOptionsParser()
@@ -1296,8 +1338,32 @@ class CommonOptionsParserTest(unittest.TestCase, TestHelper):
                          ({'album': None, 'path': None, 'format': None}, []))
 
 
+class EncodingTest(_common.TestCase):
+    """Tests for the `terminal_encoding` config option and our
+    `_in_encoding` and `_out_encoding` utility functions.
+    """
+
+    def out_encoding_overridden(self):
+        config['terminal_encoding'] = 'fake_encoding'
+        self.assertEqual(ui._out_encoding(), 'fake_encoding')
+
+    def in_encoding_overridden(self):
+        config['terminal_encoding'] = 'fake_encoding'
+        self.assertEqual(ui._in_encoding(), 'fake_encoding')
+
+    def out_encoding_default_utf8(self):
+        with patch('sys.stdout') as stdout:
+            stdout.encoding = None
+            self.assertEqual(ui._out_encoding(), 'utf8')
+
+    def in_encoding_default_utf8(self):
+        with patch('sys.stdin') as stdin:
+            stdin.encoding = None
+            self.assertEqual(ui._in_encoding(), 'utf8')
+
+
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

@@ -31,6 +31,7 @@ import re
 import struct
 import traceback
 import os.path
+from six.moves import input
 
 from beets import logging
 from beets import library
@@ -38,12 +39,13 @@ from beets import plugins
 from beets import util
 from beets.util.functemplate import Template
 from beets import config
-from beets.util import confit
+from beets.util import confit, as_string
 from beets.autotag import mb
 from beets.dbcore import query as db_query
+import six
 
 # On Windows platforms, use colorama to support "ANSI" terminal colors.
-if sys.platform == b'win32':
+if sys.platform == 'win32':
     try:
         import colorama
     except ImportError:
@@ -73,32 +75,37 @@ class UserError(Exception):
 # Encoding utilities.
 
 
-def _in_encoding(default=u'utf-8'):
+def _in_encoding():
     """Get the encoding to use for *inputting* strings from the console.
-
-    :param default: the fallback sys.stdin encoding
     """
-
-    return config['terminal_encoding'].get() or getattr(sys.stdin, 'encoding',
-                                                        default)
+    return _stream_encoding(sys.stdin)
 
 
 def _out_encoding():
     """Get the encoding to use for *outputting* strings to the console.
+    """
+    return _stream_encoding(sys.stdout)
+
+
+def _stream_encoding(stream, default='utf8'):
+    """A helper for `_in_encoding` and `_out_encoding`: get the stream's
+    preferred encoding, using a configured override or a default
+    fallback if neither is not specified.
     """
     # Configured override?
     encoding = config['terminal_encoding'].get()
     if encoding:
         return encoding
 
-    # For testing: When sys.stdout is a StringIO under the test harness,
-    # it doesn't have an `encoding` attribute. Just use UTF-8.
-    if not hasattr(sys.stdout, 'encoding'):
-        return 'utf8'
+    # For testing: When sys.stdout or sys.stdin is a StringIO under the
+    # test harness, it doesn't have an `encoding` attribute. Just use
+    # UTF-8.
+    if not hasattr(stream, 'encoding'):
+        return default
 
     # Python's guessed output stream encoding, or UTF-8 as a fallback
     # (e.g., when piped to a file).
-    return sys.stdout.encoding or 'utf8'
+    return stream.encoding or default
 
 
 def _arg_encoding():
@@ -115,9 +122,12 @@ def _arg_encoding():
 
 def decargs(arglist):
     """Given a list of command-line argument bytestrings, attempts to
-    decode them to Unicode strings.
+    decode them to Unicode strings when running under Python 2.
     """
-    return [s.decode(_arg_encoding()) for s in arglist]
+    if six.PY2:
+        return [s.decode(_arg_encoding()) for s in arglist]
+    else:
+        return arglist
 
 
 def print_(*strings, **kwargs):
@@ -125,24 +135,22 @@ def print_(*strings, **kwargs):
     is not in the terminal's encoding's character set, just silently
     replaces it.
 
-    If the arguments are strings then they're expected to share the same
-    type: either bytes or unicode.
+    The arguments must be Unicode strings: `unicode` on Python 2; `str` on
+    Python 3.
 
     The `end` keyword argument behaves similarly to the built-in `print`
     (it defaults to a newline). The value should have the same string
     type as the arguments.
     """
-    end = kwargs.get('end')
+    if not strings:
+        strings = [u'']
+    assert isinstance(strings[0], six.text_type)
 
-    if not strings or isinstance(strings[0], unicode):
-        txt = u' '.join(strings)
-        txt += u'\n' if end is None else end
-    else:
-        txt = b' '.join(strings)
-        txt += b'\n' if end is None else end
+    txt = u' '.join(strings)
+    txt += kwargs.get('end', u'\n')
 
-    # Always send bytes to the stdout stream.
-    if isinstance(txt, unicode):
+    # Send bytes to the stdout stream on Python 2.
+    if six.PY2:
         txt = txt.encode(_out_encoding(), 'replace')
 
     sys.stdout.write(txt)
@@ -188,23 +196,26 @@ def should_move(move_opt=None):
 # Input prompts.
 
 def input_(prompt=None):
-    """Like `raw_input`, but decodes the result to a Unicode string.
+    """Like `input`, but decodes the result to a Unicode string.
     Raises a UserError if stdin is not available. The prompt is sent to
     stdout rather than stderr. A printed between the prompt and the
     input cursor.
     """
     # raw_input incorrectly sends prompts to stderr, not stdout, so we
-    # use print() explicitly to display prompts.
+    # use print_() explicitly to display prompts.
     # http://bugs.python.org/issue1927
     if prompt:
-        print_(prompt, end=' ')
+        print_(prompt, end=u' ')
 
     try:
-        resp = raw_input()
+        resp = input()
     except EOFError:
         raise UserError(u'stdin stream ended while input required')
 
-    return resp.decode(_in_encoding(), 'ignore')
+    if six.PY2:
+        return resp.decode(_in_encoding(), 'ignore')
+    else:
+        return resp
 
 
 def input_options(options, require=False, prompt=None, fallback_prompt=None,
@@ -256,7 +267,7 @@ def input_options(options, require=False, prompt=None, fallback_prompt=None,
         # Mark the option's shortcut letter for display.
         if not require and (
             (default is None and not numrange and first) or
-            (isinstance(default, basestring) and
+            (isinstance(default, six.string_types) and
              found_letter.lower() == default.lower())):
             # The first option is the default; mark it.
             show_letter = '[%s]' % found_letter.upper()
@@ -292,11 +303,11 @@ def input_options(options, require=False, prompt=None, fallback_prompt=None,
         prompt_part_lengths = []
         if numrange:
             if isinstance(default, int):
-                default_name = unicode(default)
+                default_name = six.text_type(default)
                 default_name = colorize('action_default', default_name)
                 tmpl = '# selection (default %s)'
                 prompt_parts.append(tmpl % default_name)
-                prompt_part_lengths.append(len(tmpl % unicode(default)))
+                prompt_part_lengths.append(len(tmpl % six.text_type(default)))
             else:
                 prompt_parts.append('# selection')
                 prompt_part_lengths.append(len(prompt_parts[-1]))
@@ -516,7 +527,8 @@ def colorize(color_name, text):
     if config['ui']['color']:
         global COLORS
         if not COLORS:
-            COLORS = dict((name, config['ui']['colors'][name].get(unicode))
+            COLORS = dict((name,
+                           config['ui']['colors'][name].as_str())
                           for name in COLOR_NAMES)
         # In case a 3rd party plugin is still passing the actual color ('red')
         # instead of the abstract color name ('text_error')
@@ -536,10 +548,11 @@ def _colordiff(a, b, highlight='text_highlight',
     highlighted intelligently to show differences; other values are
     stringified and highlighted in their entirety.
     """
-    if not isinstance(a, basestring) or not isinstance(b, basestring):
+    if not isinstance(a, six.string_types) \
+       or not isinstance(b, six.string_types):
         # Non-strings: use ordinary equality.
-        a = unicode(a)
-        b = unicode(b)
+        a = six.text_type(a)
+        b = six.text_type(b)
         if a == b:
             return a, b
         else:
@@ -587,7 +600,7 @@ def colordiff(a, b, highlight='text_highlight'):
     if config['ui']['color']:
         return _colordiff(a, b, highlight)
     else:
-        return unicode(a), unicode(b)
+        return six.text_type(a), six.text_type(b)
 
 
 def get_path_formats(subview=None):
@@ -598,7 +611,7 @@ def get_path_formats(subview=None):
     subview = subview or config['paths']
     for query, view in subview.items():
         query = PF_KEY_QUERIES.get(query, query)  # Expand common queries.
-        path_formats.append((query, Template(view.get(unicode))))
+        path_formats.append((query, Template(view.as_str())))
     return path_formats
 
 
@@ -636,7 +649,7 @@ def term_width():
     except IOError:
         return fallback
     try:
-        height, width = struct.unpack(b'hh', buf)
+        height, width = struct.unpack('hh', buf)
     except struct.error:
         return fallback
     return width
@@ -666,7 +679,7 @@ def _field_diff(field, old, new):
 
     # For strings, highlight changes. For others, colorize the whole
     # thing.
-    if isinstance(oldval, basestring):
+    if isinstance(oldval, six.string_types):
         oldstr, newstr = colordiff(oldval, newstr)
     else:
         oldstr = colorize('text_error', oldstr)
@@ -736,8 +749,8 @@ def show_path_changes(path_changes):
     sources, destinations = zip(*path_changes)
 
     # Ensure unicode output
-    sources = map(util.displayable_path, sources)
-    destinations = map(util.displayable_path, destinations)
+    sources = list(map(util.displayable_path, sources))
+    destinations = list(map(util.displayable_path, destinations))
 
     # Calculate widths for terminal split
     col_width = (term_width() - len(' -> ')) // 2
@@ -799,7 +812,14 @@ class CommonOptionsParser(optparse.OptionParser, object):
         if store_true:
             setattr(parser.values, option.dest, True)
 
-        value = fmt or value and unicode(value) or ''
+        # Use the explicitly specified format, or the string from the option.
+        if fmt:
+            value = fmt
+        elif value:
+            value, = decargs([value])
+        else:
+            value = u''
+
         parser.values.format = value
         if target:
             config[target._format_config_key].set(value)
@@ -852,7 +872,7 @@ class CommonOptionsParser(optparse.OptionParser, object):
         """
         kwargs = {}
         if target:
-            if isinstance(target, basestring):
+            if isinstance(target, six.string_types):
                 target = {'item': library.Item,
                           'album': library.Album}[target]
             kwargs['target'] = target
@@ -911,7 +931,7 @@ class Subcommand(object):
     def root_parser(self, root_parser):
         self._root_parser = root_parser
         self.parser.prog = '{0} {1}'.format(
-            root_parser.get_prog_name().decode('utf8'), self.name)
+            as_string(root_parser.get_prog_name()), self.name)
 
 
 class SubcommandsOptionParser(CommonOptionsParser):
@@ -1086,12 +1106,18 @@ def _load_plugins(config):
     """Load the plugins specified in the configuration.
     """
     paths = config['pluginpath'].get(confit.StrSeq(split=False))
-    paths = map(util.normpath, paths)
+    paths = [util.normpath(p) for p in paths]
     log.debug(u'plugin paths: {0}', util.displayable_path(paths))
 
+    # On Python 3, the search paths need to be unicode.
+    paths = [util.py3_path(p) for p in paths]
+
+    # Extend the `beetsplug` package to include the plugin paths.
     import beetsplug
     beetsplug.__path__ = paths + beetsplug.__path__
-    # For backwards compatibility.
+
+    # For backwards compatibility, also support plugin paths that
+    # *contain* a `beetsplug` package.
     sys.path += paths
 
     plugins.load_plugins(config['plugins'].as_str_seq())
@@ -1132,7 +1158,7 @@ def _configure(options):
     # Add any additional config files specified with --config. This
     # special handling lets specified plugins get loaded before we
     # finish parsing the command line.
-    if getattr(options, b'config', None) is not None:
+    if getattr(options, 'config', None) is not None:
         config_path = options.config
         del options.config
         config.set_file(config_path)
@@ -1182,7 +1208,7 @@ def _configure(options):
 def _open_library(config):
     """Create a new library instance from the configuration.
     """
-    dbpath = config['library'].as_filename()
+    dbpath = util.bytestring_path(config['library'].as_filename())
     try:
         lib = library.Library(
             dbpath,
@@ -1233,6 +1259,7 @@ def _raw_main(args, lib=None):
         from beets.ui.commands import config_edit
         return config_edit()
 
+    test_lib = bool(lib)
     subcommands, plugins, lib = _setup(options, lib)
     parser.add_subcommand(*subcommands)
 
@@ -1240,6 +1267,9 @@ def _raw_main(args, lib=None):
     subcommand.func(lib, suboptions, subargs)
 
     plugins.send('cli_exit', lib=lib)
+    if not test_lib:
+        # Clean up the library unless it came from the test harness.
+        lib._close()
 
 
 def main(args=None):

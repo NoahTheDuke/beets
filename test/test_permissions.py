@@ -5,10 +5,12 @@
 from __future__ import division, absolute_import, print_function
 
 import os
+import platform
 from mock import patch, Mock
 
 from test._common import unittest
 from test.helper import TestHelper
+from beets.util import displayable_path
 from beetsplug.permissions import (check_permissions,
                                    convert_perm,
                                    dirs_in_library)
@@ -20,8 +22,8 @@ class PermissionsPluginTest(unittest.TestCase, TestHelper):
         self.load_plugins('permissions')
 
         self.config['permissions'] = {
-            'file': 777,
-            'dir': 777}
+            'file': '777',
+            'dir': '777'}
 
     def tearDown(self):
         self.teardown_beets()
@@ -39,16 +41,21 @@ class PermissionsPluginTest(unittest.TestCase, TestHelper):
         self.do_thing(False)
 
     def do_thing(self, expect_success):
+        if platform.system() == 'Windows':
+            self.skipTest('permissions not available on Windows')
+
         def get_stat(v):
             return os.stat(
-                os.path.join(self.temp_dir, 'import', *v)).st_mode & 0o777
+                os.path.join(self.temp_dir, b'import', *v)).st_mode & 0o777
         self.importer = self.create_importer()
         typs = ['file', 'dir']
+
+        track_file = (b'album 0', b'track 0.mp3')
         self.exp_perms = {
             True: {k: convert_perm(self.config['permissions'][k].get())
                    for k in typs},
-            False: {k: get_stat(v)
-                    for (k, v) in zip(typs, (('album 0', 'track 0.mp3'), ()))}}
+            False: {k: get_stat(v) for (k, v) in zip(typs, (track_file, ()))}
+        }
 
         self.importer.run()
         item = self.lib.items().get()
@@ -61,17 +68,24 @@ class PermissionsPluginTest(unittest.TestCase, TestHelper):
     def assertPerms(self, path, typ, expect_success):  # noqa
         for x in [(True, self.exp_perms[expect_success][typ], '!='),
                   (False, self.exp_perms[not expect_success][typ], '==')]:
-            self.assertEqual(x[0], check_permissions(path, x[1]),
-                             msg=u'{} : {} {} {}'.format(
-                path, oct(os.stat(path).st_mode), x[2], oct(x[1])))
+            msg = u'{} : {} {} {}'.format(
+                displayable_path(path),
+                oct(os.stat(path).st_mode),
+                x[2],
+                oct(x[1])
+            )
+            self.assertEqual(x[0], check_permissions(path, x[1]), msg=msg)
 
     def test_convert_perm_from_string(self):
         self.assertEqual(convert_perm('10'), 8)
+
+    def test_convert_perm_from_int(self):
+        self.assertEqual(convert_perm(10), 8)
 
 
 def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

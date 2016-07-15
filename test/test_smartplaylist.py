@@ -25,7 +25,7 @@ from beetsplug.smartplaylist import SmartPlaylistPlugin
 from beets.library import Item, Album, parse_query_string
 from beets.dbcore import OrQuery
 from beets.dbcore.query import NullSort, MultipleSort, FixedFieldSort
-from beets.util import syspath
+from beets.util import syspath, bytestring_path, py3_path
 from beets.ui import UserError
 from beets import config
 
@@ -149,19 +149,19 @@ class SmartPlaylistTest(unittest.TestCase):
     def test_playlist_update(self):
         spl = SmartPlaylistPlugin()
 
-        i = Mock(path='/tagada.mp3')
+        i = Mock(path=b'/tagada.mp3')
         i.evaluate_template.side_effect = lambda x, _: x
         q = Mock()
         a_q = Mock()
         lib = Mock()
         lib.items.return_value = [i]
         lib.albums.return_value = []
-        pl = 'my_playlist.m3u', (q, None), (a_q, None)
+        pl = b'my_playlist.m3u', (q, None), (a_q, None)
         spl._matched_playlists = [pl]
 
-        dir = mkdtemp()
+        dir = bytestring_path(mkdtemp())
         config['smartplaylist']['relative_to'] = False
-        config['smartplaylist']['playlist_dir'] = dir
+        config['smartplaylist']['playlist_dir'] = py3_path(dir)
         try:
             spl.update_playlists(lib)
         except Exception:
@@ -173,11 +173,11 @@ class SmartPlaylistTest(unittest.TestCase):
 
         m3u_filepath = path.join(dir, pl[0])
         self.assertTrue(path.exists(m3u_filepath))
-        with open(syspath(m3u_filepath), 'r') as f:
+        with open(syspath(m3u_filepath), 'rb') as f:
             content = f.read()
         rmtree(dir)
 
-        self.assertEqual(content, "/tagada.mp3\n")
+        self.assertEqual(content, b'/tagada.mp3\n')
 
 
 class SmartPlaylistCLITest(unittest.TestCase, TestHelper):
@@ -191,7 +191,7 @@ class SmartPlaylistCLITest(unittest.TestCase, TestHelper):
             {'name': 'all.m3u',
              'query': u''}
         ])
-        config['smartplaylist']['playlist_dir'].set(self.temp_dir)
+        config['smartplaylist']['playlist_dir'].set(py3_path(self.temp_dir))
         self.load_plugins('smartplaylist')
 
     def tearDown(self):
@@ -203,20 +203,20 @@ class SmartPlaylistCLITest(unittest.TestCase, TestHelper):
             self.run_with_output(u'splupdate', u'tagada')
 
         self.run_with_output(u'splupdate', u'my_playlist')
-        m3u_path = path.join(self.temp_dir, 'my_playlist.m3u')
+        m3u_path = path.join(self.temp_dir, b'my_playlist.m3u')
         self.assertTrue(path.exists(m3u_path))
-        with open(m3u_path, 'r') as f:
+        with open(m3u_path, 'rb') as f:
             self.assertEqual(f.read(), self.item.path + b"\n")
         remove(m3u_path)
 
         self.run_with_output(u'splupdate', u'my_playlist.m3u')
-        with open(m3u_path, 'r') as f:
+        with open(m3u_path, 'rb') as f:
             self.assertEqual(f.read(), self.item.path + b"\n")
         remove(m3u_path)
 
         self.run_with_output(u'splupdate')
-        for name in (u'my_playlist.m3u', u'all.m3u'):
-            with open(path.join(self.temp_dir, name), 'r') as f:
+        for name in (b'my_playlist.m3u', b'all.m3u'):
+            with open(path.join(self.temp_dir, name), 'rb') as f:
                 self.assertEqual(f.read(), self.item.path + b"\n")
 
 
@@ -224,5 +224,5 @@ def suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
 
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     unittest.main(defaultTest='suite')

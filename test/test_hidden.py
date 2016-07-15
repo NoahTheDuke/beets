@@ -48,7 +48,7 @@ class HiddenFileTest(unittest.TestCase):
             self.assertTrue(hidden.is_hidden(f.name))
 
     def test_windows_hidden(self):
-        if not sys.platform == 'windows':
+        if not sys.platform == 'win32':
             self.skipTest('sys.platform is not windows')
             return
 
@@ -66,9 +66,16 @@ class HiddenFileTest(unittest.TestCase):
             self.assertTrue(hidden.is_hidden(f.name))
 
     def test_other_hidden(self):
-        if sys.platform == 'darwin' or sys.platform == 'windows':
+        if sys.platform == 'darwin' or sys.platform == 'win32':
             self.skipTest('sys.platform is known')
             return
 
         with tempfile.NamedTemporaryFile(prefix='.tmp') as f:
             self.assertTrue(hidden.is_hidden(f.name))
+
+
+def suite():
+    return unittest.TestLoader().loadTestsFromName(__name__)
+
+if __name__ == '__main__':
+    unittest.main(defaultTest='suite')

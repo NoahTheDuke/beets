@@ -21,19 +21,17 @@ import sys
 import os
 import tempfile
 import shutil
+import six
+import unittest
 from contextlib import contextmanager
 
-# Use unittest2 on Python < 2.7.
-try:
-    import unittest2 as unittest
-except ImportError:
-    import unittest
 
 # Mangle the search path to include the beets sources.
 sys.path.insert(0, '..')  # noqa
 import beets.library
 from beets import importer, logging
 from beets.ui import commands
+from beets import util
 import beets
 
 # Make sure the development versions of the plugins are used
@@ -43,7 +41,8 @@ beetsplug.__path__ = [os.path.abspath(
 )]
 
 # Test resources path.
-RSRC = os.path.join(os.path.dirname(__file__), b'rsrc')
+RSRC = util.bytestring_path(os.path.join(os.path.dirname(__file__), 'rsrc'))
+PLUGINPATH = os.path.join(os.path.dirname(__file__), 'rsrc', 'beetsplug')
 
 # Propagate to root loger so nosetest can capture it
 log = logging.getLogger('beets')
@@ -54,7 +53,7 @@ log.setLevel(logging.DEBUG)
 _item_ident = 0
 
 # OS feature test.
-HAVE_SYMLINK = hasattr(os, 'symlink')
+HAVE_SYMLINK = sys.platform != 'win32'
 
 
 def item(lib=None):
@@ -126,9 +125,30 @@ def import_session(lib=None, loghandler=None, paths=[], query=[], cli=False):
     return cls(lib, loghandler, paths, query)
 
 
+class Assertions(object):
+    """A mixin with additional unit test assertions."""
+
+    def assertExists(self, path):  # noqa
+        self.assertTrue(os.path.exists(util.syspath(path)),
+                        u'file does not exist: {!r}'.format(path))
+
+    def assertNotExists(self, path):  # noqa
+        self.assertFalse(os.path.exists(util.syspath(path)),
+                         u'file exists: {!r}'.format((path)))
+
+    def assert_equal_path(self, a, b):
+        """Check that two paths are equal."""
+        # The common case.
+        if a == b:
+            return
+
+        self.assertEqual(util.normpath(a), util.normpath(b),
+                         u'paths are not equal: {!r} and {!r}'.format(a, b))
+
+
 # A test harness for all beets tests.
 # Provides temporary, isolated configuration.
-class TestCase(unittest.TestCase):
+class TestCase(unittest.TestCase, Assertions):
     """A unittest.TestCase subclass that saves and restores beets'
     global configuration. This allows tests to make temporary
     modifications that will then be automatically removed when the test
@@ -142,15 +162,19 @@ class TestCase(unittest.TestCase):
 
         # Direct paths to a temporary directory. Tests can also use this
         # temporary directory.
-        self.temp_dir = tempfile.mkdtemp()
-        beets.config['statefile'] = os.path.join(self.temp_dir, 'state.pickle')
-        beets.config['library'] = os.path.join(self.temp_dir, 'library.db')
-        beets.config['directory'] = os.path.join(self.temp_dir, 'libdir')
+        self.temp_dir = util.bytestring_path(tempfile.mkdtemp())
+
+        beets.config['statefile'] = \
+            util.py3_path(os.path.join(self.temp_dir, b'state.pickle'))
+        beets.config['library'] = \
+            util.py3_path(os.path.join(self.temp_dir, b'library.db'))
+        beets.config['directory'] = \
+            util.py3_path(os.path.join(self.temp_dir, b'libdir'))
 
         # Set $HOME, which is used by confit's `config_dir()` to create
         # directories.
         self._old_home = os.environ.get('HOME')
-        os.environ['HOME'] = self.temp_dir
+        os.environ['HOME'] = util.py3_path(self.temp_dir)
 
         # Initialize, but don't install, a DummyIO.
         self.io = DummyIO()
@@ -166,14 +190,6 @@ class TestCase(unittest.TestCase):
 
         beets.config.clear()
         beets.config._materialized = False
-
-    def assertExists(self, path):  # noqa
-        self.assertTrue(os.path.exists(path),
-                        u'file does not exist: {!r}'.format(path))
-
-    def assertNotExists(self, path):  # noqa
-        self.assertFalse(os.path.exists(path),
-                         u'file exists: {!r}'.format((path)))
 
 
 class LibTestCase(TestCase):
@@ -241,7 +257,13 @@ class DummyOut(object):
         self.buf.append(s)
 
     def get(self):
-        return b''.join(self.buf)
+        if six.PY2:
+            return b''.join(self.buf)
+        else:
+            return ''.join(self.buf)
+
+    def flush(self):
+        self.clear()
 
     def clear(self):
         self.buf = []
@@ -256,7 +278,10 @@ class DummyIn(object):
         self.out = out
 
     def add(self, s):
-        self.buf.append(s + b'\n')
+        if six.PY2:
+            self.buf.append(s + b'\n')
+        else:
+            self.buf.append(s + '\n')
 
     def readline(self):
         if not self.buf:

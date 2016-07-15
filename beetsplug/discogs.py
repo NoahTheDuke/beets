@@ -27,12 +27,12 @@ from beets.util import confit
 from discogs_client import Release, Client
 from discogs_client.exceptions import DiscogsAPIError
 from requests.exceptions import ConnectionError
+from six.moves import http_client
 import beets
 import re
 import time
 import json
 import socket
-import httplib
 import os
 
 
@@ -43,7 +43,7 @@ urllib3_logger.setLevel(logging.CRITICAL)
 USER_AGENT = u'beets/{0} +http://beets.io/'.format(beets.__version__)
 
 # Exceptions that discogs_client should really handle but does not.
-CONNECTION_ERRORS = (ConnectionError, socket.error, httplib.HTTPException,
+CONNECTION_ERRORS = (ConnectionError, socket.error, http_client.HTTPException,
                      ValueError,  # JSON decoding raises a ValueError.
                      DiscogsAPIError)
 
@@ -66,8 +66,8 @@ class DiscogsPlugin(BeetsPlugin):
     def setup(self, session=None):
         """Create the `discogs_client` field. Authenticate if necessary.
         """
-        c_key = self.config['apikey'].get(unicode)
-        c_secret = self.config['apisecret'].get(unicode)
+        c_key = self.config['apikey'].as_str()
+        c_secret = self.config['apisecret'].as_str()
 
         # Get the OAuth token from a file or log in.
         try:
@@ -194,13 +194,13 @@ class DiscogsPlugin(BeetsPlugin):
         # cause a query to return no results, even if they match the artist or
         # album title. Use `re.UNICODE` flag to avoid stripping non-english
         # word characters.
-        # TEMPORARY: Encode as ASCII to work around a bug:
+        # FIXME: Encode as ASCII to work around a bug:
         # https://github.com/beetbox/beets/issues/1051
         # When the library is fixed, we should encode as UTF-8.
         query = re.sub(r'(?u)\W+', ' ', query).encode('ascii', "replace")
         # Strip medium information from query, Things like "CD1" and "disk 1"
         # can also negate an otherwise positive result.
-        query = re.sub(r'(?i)\b(CD|disc)\s*\d+', '', query)
+        query = re.sub(br'(?i)\b(CD|disc)\s*\d+', '', query)
         try:
             releases = self.discogs_client.search(query,
                                                   type='release').page(1)
@@ -225,7 +225,7 @@ class DiscogsPlugin(BeetsPlugin):
             result.data['formats'][0].get('descriptions', [])) or None
         va = result.data['artists'][0]['name'].lower() == 'various'
         if va:
-            artist = config['va_name'].get(unicode)
+            artist = config['va_name'].as_str()
         year = result.data['year']
         label = result.data['labels'][0]['name']
         mediums = len(set(t.medium for t in tracks))

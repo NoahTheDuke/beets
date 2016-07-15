@@ -34,6 +34,8 @@ import ast
 import dis
 import types
 
+import six
+
 SYMBOL_DELIM = u'$'
 FUNC_DELIM = u'%'
 GROUP_OPEN = u'{'
@@ -41,8 +43,8 @@ GROUP_CLOSE = u'}'
 ARG_SEP = u','
 ESCAPE_CHAR = u'$'
 
-VARIABLE_PREFIX = b'__var_'
-FUNCTION_PREFIX = b'__func_'
+VARIABLE_PREFIX = '__var_'
+FUNCTION_PREFIX = '__func_'
 
 
 class Environment(object):
@@ -71,12 +73,12 @@ def ex_literal(val):
     value.
     """
     if val is None:
-        return ast.Name(b'None', ast.Load())
-    elif isinstance(val, (int, float, long)):
+        return ast.Name('None', ast.Load())
+    elif isinstance(val, six.integer_types):
         return ast.Num(val)
     elif isinstance(val, bool):
         return ast.Name(bytes(val), ast.Load())
-    elif isinstance(val, basestring):
+    elif isinstance(val, six.string_types):
         return ast.Str(val)
     raise TypeError(u'no literal for {0}'.format(type(val)))
 
@@ -95,7 +97,7 @@ def ex_call(func, args):
     function may be an expression or the name of a function. Each
     argument may be an expression or a value to be used as a literal.
     """
-    if isinstance(func, basestring):
+    if isinstance(func, six.string_types):
         func = ex_rvalue(func)
 
     args = list(args)
@@ -124,7 +126,7 @@ def compile_func(arg_names, statements, name='_the_func', debug=False):
     mod = ast.Module([func_def])
     ast.fix_missing_locations(mod)
 
-    prog = compile(mod, b'<generated>', b'exec')
+    prog = compile(mod, '<generated>', 'exec')
 
     # Debug: show bytecode.
     if debug:
@@ -134,7 +136,7 @@ def compile_func(arg_names, statements, name='_the_func', debug=False):
                 dis.dis(const)
 
     the_locals = {}
-    exec prog in {}, the_locals
+    exec(prog, {}, the_locals)
     return the_locals[name]
 
 
@@ -188,8 +190,8 @@ class Call(object):
             except Exception as exc:
                 # Function raised exception! Maybe inlining the name of
                 # the exception will help debug.
-                return u'<%s>' % unicode(exc)
-            return unicode(out)
+                return u'<%s>' % six.text_type(exc)
+            return six.text_type(out)
         else:
             return self.original
 
@@ -207,11 +209,11 @@ class Call(object):
             # Create a subexpression that joins the result components of
             # the arguments.
             arg_exprs.append(ex_call(
-                ast.Attribute(ex_literal(u''), b'join', ast.Load()),
+                ast.Attribute(ex_literal(u''), 'join', ast.Load()),
                 [ex_call(
-                    b'map',
+                    'map',
                     [
-                        ex_rvalue(b'unicode'),
+                        ex_rvalue('unicode'),
                         ast.List(subexprs, ast.Load()),
                     ]
                 )],
@@ -240,11 +242,11 @@ class Expression(object):
         """
         out = []
         for part in self.parts:
-            if isinstance(part, basestring):
+            if isinstance(part, six.string_types):
                 out.append(part)
             else:
                 out.append(part.evaluate(env))
-        return u''.join(map(unicode, out))
+        return u''.join(map(six.text_type, out))
 
     def translate(self):
         """Compile the expression to a list of Python AST expressions, a
@@ -254,7 +256,7 @@ class Expression(object):
         varnames = set()
         funcnames = set()
         for part in self.parts:
-            if isinstance(part, basestring):
+            if isinstance(part, six.string_types):
                 expressions.append(ex_literal(part))
             else:
                 e, v, f = part.translate()
@@ -506,7 +508,8 @@ class Template(object):
     def __init__(self, template):
         self.expr = _parse(template)
         self.original = template
-        self.compiled = self.translate()
+        if six.PY2:  # FIXME Compiler is broken on Python 3.
+            self.compiled = self.translate()
 
     def __eq__(self, other):
         return self.original == other.original
@@ -522,9 +525,12 @@ class Template(object):
     def substitute(self, values={}, functions={}):
         """Evaluate the template given the values and functions.
         """
-        try:
-            res = self.compiled(values, functions)
-        except:  # Handle any exceptions thrown by compiled version.
+        if six.PY2:  # FIXME As above.
+            try:
+                res = self.compiled(values, functions)
+            except:  # Handle any exceptions thrown by compiled version.
+                res = self.interpret(values, functions)
+        else:
             res = self.interpret(values, functions)
         return res
 
@@ -557,11 +563,11 @@ class Template(object):
 
 # Performance tests.
 
-if __name__ == b'__main__':
+if __name__ == '__main__':
     import timeit
     _tmpl = Template(u'foo $bar %baz{foozle $bar barzle} $bar')
     _vars = {'bar': 'qux'}
-    _funcs = {'baz': unicode.upper}
+    _funcs = {'baz': six.text_type.upper}
     interp_time = timeit.timeit('_tmpl.interpret(_vars, _funcs)',
                                 'from __main__ import _tmpl, _vars, _funcs',
                                 number=10000)

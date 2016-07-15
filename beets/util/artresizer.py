@@ -18,14 +18,14 @@ public resizing proxy if neither is available.
 """
 from __future__ import division, absolute_import, print_function
 
-import urllib
 import subprocess
 import os
 import re
 from tempfile import NamedTemporaryFile
-
+from six.moves.urllib.parse import urlencode
 from beets import logging
 from beets import util
+import six
 
 # Resizing methods
 PIL = 1
@@ -41,7 +41,7 @@ def resize_url(url, maxwidth):
     """Return a proxied image URL that resizes the original image to
     maxwidth (preserving aspect ratio).
     """
-    return '{0}?{1}'.format(PROXY_URL, urllib.urlencode({
+    return '{0}?{1}'.format(PROXY_URL, urlencode({
         'url': url.replace('http://', ''),
         'w': bytes(maxwidth),
     }))
@@ -52,8 +52,8 @@ def temp_file_for(path):
     specified path.
     """
     ext = os.path.splitext(path)[1]
-    with NamedTemporaryFile(suffix=ext, delete=False) as f:
-        return f.name
+    with NamedTemporaryFile(suffix=util.py3_path(ext), delete=False) as f:
+        return util.bytestring_path(f.name)
 
 
 def pil_resize(maxwidth, path_in, path_out=None):
@@ -160,10 +160,9 @@ class Shareable(type):
         return self._instance
 
 
-class ArtResizer(object):
+class ArtResizer(six.with_metaclass(Shareable, object)):
     """A singleton class that performs image resizes.
     """
-    __metaclass__ = Shareable
 
     def __init__(self):
         """Create a resizer object with an inferred method.
@@ -231,12 +230,13 @@ class ArtResizer(object):
 
 def get_im_version():
     """Return Image Magick version or None if it is unavailable
-    Try invoking ImageMagick's "convert"."""
+    Try invoking ImageMagick's "convert".
+    """
     try:
-        out = util.command_output([b'identify', b'--version'])
+        out = util.command_output([b'convert', b'--version'])
 
-        if 'imagemagick' in out.lower():
-            pattern = r".+ (\d+)\.(\d+)\.(\d+).*"
+        if b'imagemagick' in out.lower():
+            pattern = br".+ (\d+)\.(\d+)\.(\d+).*"
             match = re.search(pattern, out)
             if match:
                 return (int(match.group(1)),
@@ -244,7 +244,8 @@ def get_im_version():
                         int(match.group(3)))
             return (0,)
 
-    except (subprocess.CalledProcessError, OSError):
+    except (subprocess.CalledProcessError, OSError) as exc:
+        log.debug(u'ImageMagick check `convert --version` failed: {}', exc)
         return None
 
 
