@@ -25,6 +25,7 @@ The scraper script used is available here:
 https://gist.github.com/1241307
 """
 import pylast
+import codecs
 import os
 import yaml
 import traceback
@@ -129,7 +130,7 @@ class LastGenrePlugin(plugins.BeetsPlugin):
             wl_filename = normpath(wl_filename)
             with open(wl_filename, 'rb') as f:
                 for line in f:
-                    line = line.decode('utf8').strip().lower()
+                    line = line.decode('utf-8').strip().lower()
                     if line and not line.startswith(u'#'):
                         self.whitelist.add(line)
 
@@ -140,7 +141,8 @@ class LastGenrePlugin(plugins.BeetsPlugin):
             c14n_filename = C14N_TREE
         if c14n_filename:
             c14n_filename = normpath(c14n_filename)
-            genres_tree = yaml.load(open(c14n_filename, 'r'))
+            with codecs.open(c14n_filename, 'r', encoding='utf-8') as f:
+                genres_tree = yaml.load(f)
             flatten_tree(genres_tree, [], self.c14n_branches)
 
     @property
@@ -402,7 +404,7 @@ class LastGenrePlugin(plugins.BeetsPlugin):
         """
         # Work around an inconsistency in pylast where
         # Album.get_top_tags() does not return TopItem instances.
-        # https://code.google.com/p/pylast/issues/detail?id=85
+        # https://github.com/pylast/pylast/issues/86
         if isinstance(obj, pylast.Album):
             obj = super(pylast.Album, obj)
 

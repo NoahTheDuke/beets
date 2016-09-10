@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # This file is part of beets.
 # Copyright 2016, Adrian Sampson.
 #
@@ -211,7 +212,7 @@ class BeatportRelease(BeatportObject):
         )
 
     def __repr__(self):
-        return six.text_type(self).encode('utf8')
+        return six.text_type(self).encode('utf-8')
 
     def __init__(self, data):
         BeatportObject.__init__(self, data)
@@ -234,7 +235,7 @@ class BeatportTrack(BeatportObject):
                 .format(artist_str, self.name, self.mix_name))
 
     def __repr__(self):
-        return six.text_type(self).encode('utf8')
+        return six.text_type(self).encode('utf-8')
 
     def __init__(self, data):
         BeatportObject.__init__(self, data)

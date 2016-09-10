@@ -20,7 +20,7 @@ from __future__ import division, absolute_import, print_function
 import shlex
 
 from beets.plugins import BeetsPlugin
-from beets.ui import decargs, print_, vararg_callback, Subcommand, UserError
+from beets.ui import decargs, print_, Subcommand, UserError
 from beets.util import command_output, displayable_path, subprocess
 from beets.library import Item, Album
 import six
@@ -80,10 +80,9 @@ class DuplicatesPlugin(BeetsPlugin):
             help=u'report duplicates only if all attributes are set',
         )
         self._command.parser.add_option(
-            u'-k', u'--keys', dest='keys',
-            action='callback', metavar='KEY1 KEY2',
-            callback=vararg_callback,
-            help=u'report duplicates based on keys',
+            u'-k', u'--key',
+            action='append', metavar='KEY',
+            help=u'report duplicates based on keys (use multiple times)',
         )
         self._command.parser.add_option(
             u'-M', u'--merge', dest='merge',
@@ -118,7 +117,7 @@ class DuplicatesPlugin(BeetsPlugin):
             delete = self.config['delete'].get(bool)
             fmt = self.config['format'].get(str)
             full = self.config['full'].get(bool)
-            keys = self.config['keys'].get(list)
+            keys = self.config['keys'].as_str_seq()
             merge = self.config['merge'].get(bool)
             move = self.config['move'].get(str)
             path = self.config['path'].get(bool)
@@ -136,15 +135,15 @@ class DuplicatesPlugin(BeetsPlugin):
                 items = lib.items(decargs(args))
 
             if path:
-                fmt = '$path'
+                fmt = u'$path'
 
             # Default format string for count mode.
             if count and not fmt:
                 if album:
-                    fmt = '$albumartist - $album'
+                    fmt = u'$albumartist - $album'
                 else:
-                    fmt = '$albumartist - $album - $title'
-                fmt += ': {0}'
+                    fmt = u'$albumartist - $album - $title'
+                fmt += u': {0}'
 
             if checksum:
                 for i in items:
@@ -170,7 +169,7 @@ class DuplicatesPlugin(BeetsPlugin):
         return [self._command]
 
     def _process_item(self, item, copy=False, move=False, delete=False,
-                      tag=False, fmt=''):
+                      tag=False, fmt=u''):
         """Process Item `item`.
         """
         print_(format(item, fmt))

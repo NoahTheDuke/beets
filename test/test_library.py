@@ -392,7 +392,7 @@ class DestinationTest(_common.TestCase):
     def test_unicode_normalized_nfc_on_linux(self):
         instr = unicodedata.normalize('NFD', u'caf\xe9')
         self.lib.path_formats = [(u'default', instr)]
-        dest = self.i.destination(platform='linux2', fragment=True)
+        dest = self.i.destination(platform='linux', fragment=True)
         self.assertEqual(dest, unicodedata.normalize('NFC', instr))
 
     def test_non_mbcs_characters_on_windows(self):
@@ -404,14 +404,14 @@ class DestinationTest(_common.TestCase):
             p = self.i.destination()
             self.assertFalse(b'?' in p)
             # We use UTF-8 to encode Windows paths now.
-            self.assertTrue(u'h\u0259d'.encode('utf8') in p)
+            self.assertTrue(u'h\u0259d'.encode('utf-8') in p)
         finally:
             sys.getfilesystemencoding = oldfunc
 
     def test_unicode_extension_in_fragment(self):
         self.lib.path_formats = [(u'default', u'foo')]
         self.i.path = util.bytestring_path(u'bar.caf\xe9')
-        dest = self.i.destination(platform='linux2', fragment=True)
+        dest = self.i.destination(platform='linux', fragment=True)
         self.assertEqual(dest, u'foo.caf\xe9')
 
     def test_asciify_and_replace(self):
@@ -923,7 +923,7 @@ class PathStringTest(_common.TestCase):
         self.assertTrue(isinstance(i.path, bytes))
 
     def test_special_chars_preserved_in_database(self):
-        path = u'b\xe1r'.encode('utf8')
+        path = u'b\xe1r'.encode('utf-8')
         self.i.path = path
         self.i.store()
         i = list(self.lib.items())[0]
@@ -931,7 +931,7 @@ class PathStringTest(_common.TestCase):
 
     def test_special_char_path_added_to_database(self):
         self.i.remove()
-        path = u'b\xe1r'.encode('utf8')
+        path = u'b\xe1r'.encode('utf-8')
         i = item()
         i.path = path
         self.lib.add(i)
@@ -1055,12 +1055,12 @@ class TemplateTest(_common.LibTestCase):
         self.assertEqual(six.text_type(album), u"foö bar")
         self.assertEqual(bytes(album), b"fo\xc3\xb6 bar")
 
-        config['format_item'] = 'bar $foo'
+        config['format_item'] = u'bar $foo'
         item = beets.library.Item()
         item.foo = u'bar'
         item.tagada = u'togodo'
-        self.assertEqual("{0}".format(item), u"bar bar")
-        self.assertEqual("{0:$tagada}".format(item), u"togodo")
+        self.assertEqual(u"{0}".format(item), u"bar bar")
+        self.assertEqual(u"{0:$tagada}".format(item), u"togodo")
 
 
 class UnicodePathTest(_common.LibTestCase):

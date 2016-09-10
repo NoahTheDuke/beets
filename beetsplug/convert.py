@@ -22,6 +22,7 @@ import threading
 import subprocess
 import tempfile
 import shlex
+import six
 from string import Template
 
 from beets import ui, util, plugins, config
@@ -83,7 +84,7 @@ def get_format(fmt=None):
     if 'extension' in keys:
         extension = config['convert']['extension'].as_str()
 
-    return (command.encode('utf8'), extension.encode('utf8'))
+    return (command.encode('utf-8'), extension.encode('utf-8'))
 
 
 def should_transcode(item, fmt):
@@ -183,19 +184,29 @@ class ConvertPlugin(BeetsPlugin):
             self._log.info(u'Encoding {0}', util.displayable_path(source))
 
         # Substitute $source and $dest in the argument list.
+        if not six.PY2:
+            command = command.decode(util.arg_encoding(), 'surrogateescape')
+            source = source.decode(util.arg_encoding(), 'surrogateescape')
+            dest = dest.decode(util.arg_encoding(), 'surrogateescape')
+
         args = shlex.split(command)
+        encode_cmd = []
         for i, arg in enumerate(args):
             args[i] = Template(arg).safe_substitute({
                 'source': source,
                 'dest': dest,
             })
+            if six.PY2:
+                encode_cmd.append(args[i])
+            else:
+                encode_cmd.append(args[i].encode(util.arg_encoding()))
 
         if pretend:
             self._log.info(u' '.join(ui.decargs(args)))
             return
 
         try:
-            util.command_output(args)
+            util.command_output(encode_cmd)
         except subprocess.CalledProcessError as exc:
             # Something went wrong (probably Ctrl+C), remove temporary files
             self._log.info(u'Encoding {0} failed. Cleaning up...',

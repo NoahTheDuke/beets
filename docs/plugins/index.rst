@@ -28,6 +28,13 @@ Each plugin has its own set of options that can be defined in a section bearing 
     convert:
         auto: true
 
+Some plugins have special dependencies that you'll need to install. The
+documentation page for each plugin will list them in the setup instructions.
+For some, you can use `pip`'s "extras" feature to install the dependencies,
+like this::
+
+    pip install beets[fetchart,lyrics,lastgenre]
+
 .. toctree::
    :hidden:
 
@@ -230,7 +237,7 @@ Here are a few of the plugins written by the beets community:
 .. _copyartifacts: https://github.com/sbarakat/beets-copyartifacts
 .. _dsedivec: https://github.com/dsedivec/beets-plugins
 .. _beets-artistcountry: https://github.com/agrausem/beets-artistcountry
-.. _beetFs: https://code.google.com/p/beetfs/
+.. _beetFs: https://github.com/jbaiter/beetfs
 .. _Beet-MusicBrainz-Collection:
     https://github.com/jeffayle/Beet-MusicBrainz-Collection/
 .. _A cmus plugin:

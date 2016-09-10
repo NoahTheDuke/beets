@@ -108,7 +108,7 @@ If you use default ``google_engine_ID``, we recommend limiting the sources to
 ``musixmatch google`` as the other sources are already included in the Google
 results.
 
-.. _register for a Google API key: https://code.google.com/apis/console
+.. _register for a Google API key: https://console.developers.google.com/
 
 Optionally, you can `define a custom search engine`_. Get your search engine's
 token and use it for your ``google_engine_ID`` configuration option. By
@@ -133,9 +133,9 @@ using `pip`_ by typing::
     pip install langdetect
 
 You also need to register for a Microsoft Azure Marketplace free account and
-to the `Microsoft Translator API`_. Follow the four steps process, specifically 
-at step 3 enter ``beets`` as *Client ID* and copy/paste the generated 
-*Client secret* into your ``bing_client_secret`` configuration, alongside 
+to the `Microsoft Translator API`_. Follow the four steps process, specifically
+at step 3 enter ``beets`` as *Client ID* and copy/paste the generated
+*Client secret* into your ``bing_client_secret`` configuration, alongside
 ``bing_lang_to`` target `language code`_.
 
 .. _langdetect: https://pypi.python.org/pypi/langdetect

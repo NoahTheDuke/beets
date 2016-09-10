@@ -104,6 +104,15 @@ class UtilTest(unittest.TestCase):
             ])
         self.assertEqual(p, u'foo/_/bar')
 
+    @unittest.skipIf(six.PY2, 'surrogateescape error handler not available'
+                     'on Python 2')
+    def test_convert_command_args_keeps_undecodeable_bytes(self):
+        arg = b'\x82'  # non-ascii bytes
+        cmd_args = util.convert_command_args([arg])
+
+        self.assertEqual(cmd_args[0],
+                         arg.decode(util.arg_encoding(), 'surrogateescape'))
+
     @patch('beets.util.subprocess.Popen')
     def test_command_output(self, mock_popen):
         def popen_fail(*args, **kwargs):
@@ -113,9 +122,9 @@ class UtilTest(unittest.TestCase):
 
         mock_popen.side_effect = popen_fail
         with self.assertRaises(subprocess.CalledProcessError) as exc_context:
-            util.command_output([b"taga", b"\xc3\xa9"])
+            util.command_output(['taga', '\xc3\xa9'])
         self.assertEqual(exc_context.exception.returncode, 1)
-        self.assertEqual(exc_context.exception.cmd, b"taga \xc3\xa9")
+        self.assertEqual(exc_context.exception.cmd, 'taga \xc3\xa9')
 
 
 class PathConversionTest(_common.TestCase):
@@ -153,12 +162,12 @@ class PathConversionTest(_common.TestCase):
     def test_bytestring_path_windows_encodes_utf8(self):
         path = u'caf\xe9'
         outpath = self._windows_bytestring_path(path)
-        self.assertEqual(path, outpath.decode('utf8'))
+        self.assertEqual(path, outpath.decode('utf-8'))
 
     def test_bytesting_path_windows_removes_magic_prefix(self):
         path = u'\\\\?\\C:\\caf\xe9'
         outpath = self._windows_bytestring_path(path)
-        self.assertEqual(outpath, u'C:\\caf\xe9'.encode('utf8'))
+        self.assertEqual(outpath, u'C:\\caf\xe9'.encode('utf-8'))
 
 
 class PathTruncationTest(_common.TestCase):

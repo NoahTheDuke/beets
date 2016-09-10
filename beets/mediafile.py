@@ -114,6 +114,33 @@ class MutagenError(UnreadableFileError):
         Exception.__init__(self, msg)
 
 
+# Interacting with Mutagen.
+
+def mutagen_call(action, path, func, *args, **kwargs):
+    """Call a Mutagen function with appropriate error handling.
+
+    `action` is a string describing what the function is trying to do,
+    and `path` is the relevant filename. The rest of the arguments
+    describe the callable to invoke.
+
+    We require at least Mutagen 1.33, where `IOError` is *never* used,
+    neither for internal parsing errors *nor* for ordinary IO error
+    conditions such as a bad filename. Mutagen-specific parsing errors and IO
+    errors are reraised as `UnreadableFileError`. Other exceptions
+    raised inside Mutagen---i.e., bugs---are reraised as `MutagenError`.
+    """
+    try:
+        return func(*args, **kwargs)
+    except mutagen.MutagenError as exc:
+        log.debug(u'{} failed: {}', action, six.text_type(exc))
+        raise UnreadableFileError(path)
+    except Exception as exc:
+        # Isolate bugs in Mutagen.
+        log.debug(u'{}', traceback.format_exc())
+        log.error(u'uncaught Mutagen exception in {}: {}', action, exc)
+        raise MutagenError(path, exc)
+
+
 # Utility.
 
 def _safe_cast(out_type, val):
@@ -149,7 +176,7 @@ def _safe_cast(out_type, val):
 
     elif out_type == six.text_type:
         if isinstance(val, bytes):
-            return val.decode('utf8', 'ignore')
+            return val.decode('utf-8', 'ignore')
         elif isinstance(val, six.text_type):
             return val
         else:
@@ -160,7 +187,7 @@ def _safe_cast(out_type, val):
             return float(val)
         else:
             if isinstance(val, bytes):
-                val = val.decode('utf8', 'ignore')
+                val = val.decode('utf-8', 'ignore')
             else:
                 val = six.text_type(val)
             match = re.match(r'[\+-]?([0-9]+\.?[0-9]*|[0-9]*\.[0-9]+)',
@@ -222,7 +249,7 @@ def _sc_decode(soundcheck):
     # We decode binary data. If one of the formats gives us a text
     # string, interpret it as UTF-8.
     if isinstance(soundcheck, six.text_type):
-        soundcheck = soundcheck.encode('utf8')
+        soundcheck = soundcheck.encode('utf-8')
 
     # SoundCheck tags consist of 10 numbers, each represented by 8
     # characters of ASCII hex preceded by a space.
@@ -433,7 +460,7 @@ class StorageStyle(object):
         # Convert suffix to correct string type.
         if self.suffix and self.as_type is six.text_type \
            and not isinstance(self.suffix, six.text_type):
-            self.suffix = self.suffix.decode('utf8')
+            self.suffix = self.suffix.decode('utf-8')
 
     # Getter.
 
@@ -485,7 +512,7 @@ class StorageStyle(object):
                 # Store bools as 1/0 instead of True/False.
                 value = six.text_type(int(bool(value)))
             elif isinstance(value, bytes):
-                value = value.decode('utf8', 'ignore')
+                value = value.decode('utf-8', 'ignore')
             else:
                 value = six.text_type(value)
         else:
@@ -598,7 +625,7 @@ class MP4StorageStyle(StorageStyle):
     def serialize(self, value):
         value = super(MP4StorageStyle, self).serialize(value)
         if self.key.startswith('----:') and isinstance(value, six.text_type):
-            value = value.encode('utf8')
+            value = value.encode('utf-8')
         return value
 
 
@@ -740,7 +767,7 @@ class MP3UFIDStorageStyle(MP3StorageStyle):
     def store(self, mutagen_file, value):
         # This field type stores text data as encoded data.
         assert isinstance(value, six.text_type)
-        value = value.encode('utf8')
+        value = value.encode('utf-8')
 
         frames = mutagen_file.tags.getall(self.key)
         for frame in frames:
@@ -1040,7 +1067,7 @@ class APEv2ImageStorageStyle(ListStorageStyle):
                 text_delimiter_index = frame.value.find(b'\x00')
                 if text_delimiter_index > 0:
                     comment = frame.value[0:text_delimiter_index]
-                    comment = comment.decode('utf8', 'replace')
+                    comment = comment.decode('utf-8', 'replace')
                 else:
                     comment = None
                 image_data = frame.value[text_delimiter_index + 1:]
@@ -1057,7 +1084,7 @@ class APEv2ImageStorageStyle(ListStorageStyle):
         for image in values:
             image_type = image.type or ImageType.other
             comment = image.desc or ''
-            image_data = comment.encode('utf8') + b'\x00' + image.data
+            image_data = comment.encode('utf-8') + b'\x00' + image.data
             cover_tag = self.TAG_NAMES[image_type]
             mutagen_file[cover_tag] = image_data
 
@@ -1361,17 +1388,7 @@ class MediaFile(object):
         path = syspath(path)
         self.path = path
 
-        try:
-            self.mgfile = mutagen.File(path)
-        except (mutagen.MutagenError, IOError) as exc:
-            # Mutagen <1.33 could raise IOError
-            log.debug(u'parsing failed: {0}', six.text_type(exc))
-            raise UnreadableFileError(path)
-        except Exception as exc:
-            # Isolate bugs in Mutagen.
-            log.debug(u'{}', traceback.format_exc())
-            log.error(u'uncaught Mutagen exception in open: {0}', exc)
-            raise MutagenError(path, exc)
+        self.mgfile = mutagen_call('open', path, mutagen.File, path)
 
         if self.mgfile is None:
             # Mutagen couldn't guess the type
@@ -1426,34 +1443,13 @@ class MediaFile(object):
             id3.update_to_v23()
             kwargs['v2_version'] = 3
 
-        try:
-            self.mgfile.save(**kwargs)
-        except (mutagen.MutagenError, IOError) as exc:
-            # Mutagen <1.33 could raise IOError
-            log.debug(u'saving failed: {0}', six.text_type(exc))
-            raise UnreadableFileError(self.path)
-        except Exception as exc:
-            # Isolate bugs in Mutagen.
-            log.debug(u'{}', traceback.format_exc())
-            log.error(u'uncaught Mutagen exception in save: {0}', exc)
-            raise MutagenError(self.path, exc)
+        mutagen_call('save', self.path, self.mgfile.save, **kwargs)
 
     def delete(self):
         """Remove the current metadata tag from the file. May
         throw `UnreadableFileError`.
         """
-
-        try:
-            self.mgfile.delete()
-        except (mutagen.MutagenError, IOError) as exc:
-            # Mutagen <1.33 could raise IOError.
-            log.debug(u'deleting failed: {0}', six.text_type(exc))
-            raise UnreadableFileError(self.path)
-        except Exception as exc:
-            # Isolate bugs in Mutagen.
-            log.debug(u'{}', traceback.format_exc())
-            log.error(u'uncaught Mutagen exception in delete: {0}', exc)
-            raise MutagenError(self.path, exc)
+        mutagen_call('delete', self.path, self.mgfile.delete)
 
     # Convenient access to the set of available fields.
 

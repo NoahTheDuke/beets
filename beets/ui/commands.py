@@ -21,6 +21,7 @@ from __future__ import division, absolute_import, print_function
 
 import os
 import re
+from platform import python_version
 from collections import namedtuple, Counter
 from itertools import chain
 
@@ -86,7 +87,7 @@ def _print_keys(query):
     returned row, with identation of 2 spaces.
     """
     for row in query:
-        print_(u' ' * 2 + row['key'].decode('utf8'))
+        print_(u' ' * 2 + row['key'].decode('utf-8'))
 
 
 def fields_func(lib, opts, args):
@@ -822,8 +823,8 @@ class TerminalImportSession(importer.ImportSession):
         """Decide what to do when a new album or item seems similar to one
         that's already in the library.
         """
-        log.warn(u"This {0} is already in the library!",
-                 (u"album" if task.is_album else u"item"))
+        log.warning(u"This {0} is already in the library!",
+                    (u"album" if task.is_album else u"item"))
 
         if config['import']['quiet']:
             # In quiet mode, don't prompt -- just skip.
@@ -901,9 +902,9 @@ class TerminalImportSession(importer.ImportSession):
                 # Keep the first of the choices, removing the rest.
                 dup_choices = [c for c in all_choices if c.short == short]
                 for c in dup_choices[1:]:
-                    log.warn(u"Prompt choice '{0}' removed due to conflict "
-                             u"with '{1}' (short letter: '{2}')",
-                             c.long, dup_choices[0].long, c.short)
+                    log.warning(u"Prompt choice '{0}' removed due to conflict "
+                                u"with '{1}' (short letter: '{2}')",
+                                c.long, dup_choices[0].long, c.short)
                     extra_choices.remove(c)
         return extra_choices
 
@@ -1045,7 +1046,7 @@ import_cmd.parser.add_option(
 )
 import_cmd.parser.add_option(
     u'-S', u'--search-id', dest='search_ids', action='append',
-    metavar='BACKEND_ID',
+    metavar='ID',
     help=u'restrict matching to a specific metadata backend ID'
 )
 import_cmd.func = import_func
@@ -1317,6 +1318,7 @@ default_commands.append(stats_cmd)
 
 def show_version(lib, opts, args):
     print_(u'beets version %s' % beets.__version__)
+    print_(u'python version {}'.format(python_version()))
     # Show plugins.
     names = sorted(p.name for p in plugins.find_plugins())
     if names:
@@ -1665,8 +1667,8 @@ def print_completion(*args):
     for line in completion_script(default_commands + plugins.commands()):
         print_(line, end=u'')
     if not any(map(os.path.isfile, BASH_COMPLETION_PATHS)):
-        log.warn(u'Warning: Unable to find the bash-completion package. '
-                 u'Command line completion might not work.')
+        log.warning(u'Warning: Unable to find the bash-completion package. '
+                    u'Command line completion might not work.')
 
 BASH_COMPLETION_PATHS = map(syspath, [
     u'/etc/bash_completion',

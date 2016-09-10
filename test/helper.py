@@ -51,7 +51,6 @@ from beets.library import Library, Item, Album
 from beets import importer
 from beets.autotag.hooks import AlbumInfo, TrackInfo
 from beets.mediafile import MediaFile, Image
-from beets.ui import _arg_encoding
 from beets import util
 
 # TODO Move AutotagMock here
@@ -91,7 +90,7 @@ def control_stdin(input=None):
     org = sys.stdin
     sys.stdin = StringIO(input)
     if six.PY2:  # StringIO encoding attr isn't writable in python >= 3
-        sys.stdin.encoding = 'utf8'
+        sys.stdin.encoding = 'utf-8'
     try:
         yield sys.stdin
     finally:
@@ -111,7 +110,7 @@ def capture_stdout():
     org = sys.stdout
     sys.stdout = capture = StringIO()
     if six.PY2:  # StringIO encoding attr isn't writable in python >= 3
-        sys.stdout.encoding = 'utf8'
+        sys.stdout.encoding = 'utf-8'
     try:
         yield sys.stdout
     finally:
@@ -119,13 +118,25 @@ def capture_stdout():
         print(capture.getvalue())
 
 
+def _convert_args(args):
+    """Convert args to bytestrings for Python 2 and convert them to strings
+       on Python 3.
+    """
+    for i, elem in enumerate(args):
+        if six.PY2:
+            if isinstance(elem, six.text_type):
+                args[i] = elem.encode(util.arg_encoding())
+        else:
+            if isinstance(elem, bytes):
+                args[i] = elem.decode(util.arg_encoding())
+
+    return args
+
+
 def has_program(cmd, args=['--version']):
     """Returns `True` if `cmd` can be executed.
     """
-    full_cmd = [cmd] + args
-    for i, elem in enumerate(full_cmd):
-        if isinstance(elem, six.text_type):
-            full_cmd[i] = elem.encode(_arg_encoding())
+    full_cmd = _convert_args([cmd] + args)
     try:
         with open(os.devnull, 'wb') as devnull:
             subprocess.check_call(full_cmd, stderr=devnull,
@@ -421,13 +432,17 @@ class TestHelper(object):
 
     # Running beets commands
 
-    def run_command(self, *args):
+    def run_command(self, *args, **kwargs):
+        """Run a beets command with an arbitrary amount of arguments. The
+           Library` defaults to `self.lib`, but can be overridden with
+           the keyword argument `lib`.
+        """
         sys.argv = ['beet']  # avoid leakage from test suite args
+        lib = None
         if hasattr(self, 'lib'):
             lib = self.lib
-        else:
-            lib = Library(':memory:')
-        beets.ui._raw_main(list(args), lib)
+        lib = kwargs.get('lib', lib)
+        beets.ui._raw_main(_convert_args(list(args)), lib)
 
     def run_with_output(self, *args):
         with capture_stdout() as out:

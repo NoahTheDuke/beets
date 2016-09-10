@@ -43,7 +43,7 @@ def resize_url(url, maxwidth):
     """
     return '{0}?{1}'.format(PROXY_URL, urlencode({
         'url': url.replace('http://', ''),
-        'w': bytes(maxwidth),
+        'w': maxwidth,
     }))
 
 
@@ -91,13 +91,13 @@ def im_resize(maxwidth, path_in, path_out=None):
     # compatibility.
     try:
         util.command_output([
-            b'convert', util.syspath(path_in, prefix=False),
-            b'-resize', b'{0}x^>'.format(maxwidth),
+            'convert', util.syspath(path_in, prefix=False),
+            '-resize', '{0}x^>'.format(maxwidth),
             util.syspath(path_out, prefix=False),
         ])
     except subprocess.CalledProcessError:
-        log.warn(u'artresizer: IM convert failed for {0}',
-                 util.displayable_path(path_in))
+        log.warning(u'artresizer: IM convert failed for {0}',
+                    util.displayable_path(path_in))
         return path_in
     return path_out
 
@@ -119,12 +119,12 @@ def pil_getsize(path_in):
 
 
 def im_getsize(path_in):
-    cmd = [b'identify', b'-format', b'%w %h',
+    cmd = ['identify', '-format', '%w %h',
            util.syspath(path_in, prefix=False)]
     try:
         out = util.command_output(cmd)
     except subprocess.CalledProcessError as exc:
-        log.warn(u'ImageMagick size query failed')
+        log.warning(u'ImageMagick size query failed')
         log.debug(
             u'`convert` exited with (status {}) when '
             u'getting size with command {}:\n{}',
@@ -134,7 +134,7 @@ def im_getsize(path_in):
     try:
         return tuple(map(int, out.split(b' ')))
     except IndexError:
-        log.warn(u'Could not understand IM output: {0!r}', out)
+        log.warning(u'Could not understand IM output: {0!r}', out)
 
 
 BACKEND_GET_SIZE = {
@@ -233,7 +233,7 @@ def get_im_version():
     Try invoking ImageMagick's "convert".
     """
     try:
-        out = util.command_output([b'convert', b'--version'])
+        out = util.command_output(['convert', '--version'])
 
         if b'imagemagick' in out.lower():
             pattern = br".+ (\d+)\.(\d+)\.(\d+).*"

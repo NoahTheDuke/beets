@@ -87,8 +87,9 @@ class EdgeTest(unittest.TestCase):
         # such aren't recognized by imghdr. Ensure that this still works thanks
         # to our own follow up mimetype detection based on
         # https://github.com/file/file/blob/master/magic/Magdir/jpeg#L12
-        f = open(os.path.join(_common.RSRC, b'only-magic-bytes.jpg'), 'rb')
-        jpg_data = f.read()
+        magic_bytes_file = os.path.join(_common.RSRC, b'only-magic-bytes.jpg')
+        with open(magic_bytes_file, 'rb') as f:
+            jpg_data = f.read()
         self.assertEqual(
             beets.mediafile._image_mime_type(jpg_data),
             'image/jpeg')
@@ -320,7 +321,7 @@ class SoundCheckTest(unittest.TestCase):
         self.assertEqual(peak, 0.0)
 
     def test_special_characters(self):
-        gain, peak = beets.mediafile._sc_decode(u'caf\xe9'.encode('utf8'))
+        gain, peak = beets.mediafile._sc_decode(u'caf\xe9'.encode('utf-8'))
         self.assertEqual(gain, 0.0)
         self.assertEqual(peak, 0.0)
 

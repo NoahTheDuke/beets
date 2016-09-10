@@ -27,15 +27,15 @@ from contextlib import contextmanager
 
 
 # Mangle the search path to include the beets sources.
-sys.path.insert(0, '..')  # noqa
-import beets.library
-from beets import importer, logging
-from beets.ui import commands
-from beets import util
-import beets
+sys.path.insert(0, '..')
+import beets.library  # noqa: E402
+from beets import importer, logging  # noqa: E402
+from beets.ui import commands  # noqa: E402
+from beets import util  # noqa: E402
+import beets  # noqa: E402
 
 # Make sure the development versions of the plugins are used
-import beetsplug
+import beetsplug  # noqa: E402
 beetsplug.__path__ = [os.path.abspath(
     os.path.join(__file__, '..', '..', 'beetsplug')
 )]
@@ -138,10 +138,6 @@ class Assertions(object):
 
     def assert_equal_path(self, a, b):
         """Check that two paths are equal."""
-        # The common case.
-        if a == b:
-            return
-
         self.assertEqual(util.normpath(a), util.normpath(b),
                          u'paths are not equal: {!r} and {!r}'.format(a, b))
 
@@ -248,7 +244,7 @@ class InputException(Exception):
 
 
 class DummyOut(object):
-    encoding = 'utf8'
+    encoding = 'utf-8'
 
     def __init__(self):
         self.buf = []
@@ -270,7 +266,7 @@ class DummyOut(object):
 
 
 class DummyIn(object):
-    encoding = 'utf8'
+    encoding = 'utf-8'
 
     def __init__(self, out=None):
         self.buf = []

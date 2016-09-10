@@ -51,9 +51,9 @@ file. The available options are:
   to all available sources.
   Default: ``filesystem coverart itunes amazon albumart``, i.e., everything but
   ``wikipedia``, ``google`` and ``fanarttv``. Enable those sources for more
-  matches at the cost of some speed. They are searched in the given order, 
+  matches at the cost of some speed. They are searched in the given order,
   thus in the default config, no remote (Web) art source are queried if
-  local art is found in the filesystem. To use a local image as fallback, 
+  local art is found in the filesystem. To use a local image as fallback,
   move it to the end of the list.
 - **google_key**: Your Google API key (to enable the Google Custom Search
   backend).
@@ -167,7 +167,7 @@ To use the google image search backend you need to
 option to your key, then add ``google`` to the list of sources in your
 configuration.
 
-.. _register for a Google API key: https://code.google.com/apis/console.
+.. _register for a Google API key: https://console.developers.google.com.
 
 Optionally, you can `define a custom search engine`_. Get your search engine's
 token and use it for your ``google_engine`` configuration option. The

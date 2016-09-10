@@ -20,7 +20,6 @@ CLI commands are implemented in the ui.commands module.
 
 from __future__ import division, absolute_import, print_function
 
-import locale
 import optparse
 import textwrap
 import sys
@@ -87,7 +86,7 @@ def _out_encoding():
     return _stream_encoding(sys.stdout)
 
 
-def _stream_encoding(stream, default='utf8'):
+def _stream_encoding(stream, default='utf-8'):
     """A helper for `_in_encoding` and `_out_encoding`: get the stream's
     preferred encoding, using a configured override or a default
     fallback if neither is not specified.
@@ -108,24 +107,12 @@ def _stream_encoding(stream, default='utf8'):
     return stream.encoding or default
 
 
-def _arg_encoding():
-    """Get the encoding for command-line arguments (and other OS
-    locale-sensitive strings).
-    """
-    try:
-        return locale.getdefaultlocale()[1] or 'utf8'
-    except ValueError:
-        # Invalid locale environment variable setting. To avoid
-        # failing entirely for no good reason, assume UTF-8.
-        return 'utf8'
-
-
 def decargs(arglist):
     """Given a list of command-line argument bytestrings, attempts to
     decode them to Unicode strings when running under Python 2.
     """
     if six.PY2:
-        return [s.decode(_arg_encoding()) for s in arglist]
+        return [s.decode(util.arg_encoding()) for s in arglist]
     else:
         return arglist
 
@@ -850,7 +837,7 @@ class CommonOptionsParser(optparse.OptionParser, object):
         """
         path = optparse.Option(*flags, nargs=0, action='callback',
                                callback=self._set_format,
-                               callback_kwargs={'fmt': '$path',
+                               callback_kwargs={'fmt': u'$path',
                                                 'store_true': True},
                                help=u'print paths for matched items or albums')
         self.add_option(path)
@@ -1062,42 +1049,6 @@ class SubcommandsOptionParser(CommonOptionsParser):
 
 
 optparse.Option.ALWAYS_TYPED_ACTIONS += ('callback',)
-
-
-def vararg_callback(option, opt_str, value, parser):
-    """Callback for an option with variable arguments.
-    Manually collect arguments right of a callback-action
-    option (ie. with action="callback"), and add the resulting
-    list to the destination var.
-
-    Usage:
-    parser.add_option("-c", "--callback", dest="vararg_attr",
-                      action="callback", callback=vararg_callback)
-
-    Details:
-    http://docs.python.org/2/library/optparse.html#callback-example-6-variable
-    -arguments
-    """
-    value = [value]
-
-    def floatable(str):
-        try:
-            float(str)
-            return True
-        except ValueError:
-            return False
-
-    for arg in parser.rargs:
-        # stop on --foo like options
-        if arg[:2] == "--" and len(arg) > 2:
-            break
-        # stop on -a, but not on -3 or -3.0
-        if arg[:1] == "-" and len(arg) > 1 and not floatable(arg):
-            break
-        value.append(arg)
-
-    del parser.rargs[:len(value) - 1]
-    setattr(parser.values, option.dest, value)
 
 
 # The main entry point and bootstrapping.

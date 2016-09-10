@@ -9,7 +9,7 @@ To use ``embyupdate`` plugin, enable it in your configuration (see :ref:`using-p
         host: localhost
         port: 8096
         username: user
-        password: password
+        apikey: apikey
 
 To use the ``embyupdate`` plugin you need to install the `requests`_ library with::
 
@@ -25,9 +25,14 @@ Configuration
 
 The available options under the ``emby:`` section are:
 
-- **host**: The Emby server name.
+- **host**: The Emby server host. You also can include ``http://`` or ``https://``.
   Default: ``localhost``
 - **port**: The Emby server port.
   Default: 8096
 - **username**: A username of a Emby user that is allowed to refresh the library.
-- **password**: That user's password.
+- **apikey**: An Emby API key for the user.
+- **password**: The password for the user. (This is only necessary if no API
+  key is provided.)
+
+You can choose to authenticate either with `apikey` or `password`, but only
+one of those two is required.

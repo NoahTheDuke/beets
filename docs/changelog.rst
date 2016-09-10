@@ -13,16 +13,32 @@ Specifically, if you package beets for distribution, here's what you'll want
 to know:
 
 * This version of beets now depends on the `six`_ library.
-* We also bumped our minimum required version of `Mutagen`_ to 1.31 (from
+* We also bumped our minimum required version of `Mutagen`_ to 1.33 (from
   1.27).
 * Please don't package beets as a Python 3 application *yet*, even though some
   things may appear to work under Python 3.4 and later.
 
-There's a small new feature:
+UI Change:
 
+* :doc:`/plugins/duplicates` no longer accepts multiple arguments in the form
+  of ``-k title albumartist album``. Each argument must be prefixed with
+  ``-k``. Example: ``-k title -k albumartist -k album``
+
+The are a couple of small new features:
+
+* :doc:`/plugins/mpdupdate`, :doc:`/plugins/mpdstats`: When the ``host`` option
+  is not set, these plugins will now look for the ``$MPD_HOST`` environment
+  variable before falling back to ``localhost``. Thanks to :user:`tarruda`.
+  :bug:`2175`
 * :doc:`/plugins/web`: Added an ``expand`` option to show the items of an
   album and a ``path`` field to the JSON output of a file which shows the
   filled-out path template for each file. :bug:`2050`
+* :doc:`/plugins/embyupdate`: The plugin can now use an API key instead of a
+  password to authenticate with Emby. :bug:`2045` :bug:`2117`
+* :doc:`/plugins/acousticbrainz`: The plugin now also adds a ``bpm`` field
+  when a song can be found on AcousticBrainz, this is faster and more
+  automatic than using the :doc:`/plugins/bpm`.
+* ``beet --version`` now includes the python version used to run beets.
 
 And there are a few bug fixes too:
 
@@ -37,6 +53,13 @@ And there are a few bug fixes too:
 * With :ref:`per_disc_numbering` enabled, some metadata sources (notably, the
   :doc:`/plugins/beatport`) would not set the track number at all. This is
   fixed. :bug:`2085`
+* :doc:`/plugins/play`: Fix ``$args`` getting passed verbatim to the play
+  command if it was set in the configuration but ``-A`` or ``--args`` was
+  omitted.
+* With :ref:`ignore_hidden` enabled, non-UTF-8 filenames would cause a crash.
+  This is fixed. :bug:`2168`
+* :doc:`/plugins/embyupdate`: Fixes authentication header problem that caused
+  a problem that it was not possible to get tokens from the Emby API.
 
 The last release, 1.3.19, also erroneously reported its version as "1.3.18"
 when you typed ``beet version``. This has been corrected.
@@ -2992,7 +3015,7 @@ issue involves correct ordering of autotagged albums.
 
 * Added `` beet version`` command that just shows the current release version.
 
-.. _upstream bug: http://code.google.com/p/mutagen/issues/detail?id=7
+.. _upstream bug: https://github.com/quodlibet/mutagen/issues/7
 .. _Bluelet: https://github.com/sampsyo/bluelet
 
 1.0b5 (September 28, 2010)
@@ -3203,16 +3226,16 @@ BPD). To "upgrade" an old database, you can use the included ``albumify`` plugin
   your library path format strings like ``$artist - $album ($format)`` to get
   directories with names like ``Paul Simon - Graceland (FLAC)``.
 
-.. _for the future: http://code.google.com/p/beets/issues/detail?id=69
+.. _for the future: https://github.com/google-code-export/beets/issues/69
 .. _the beetsplug directory:
-    http://code.google.com/p/beets/source/browse/#hg/beetsplug
+   https://github.com/beetbox/beets/tree/master/beetsplug
 
 Beets also now has its first third-party plugin: `beetfs`_, by Martin Eve! It
 exposes your music in a FUSE filesystem using a custom directory structure. Even
 cooler: it lets you keep your files intact on-disk while correcting their tags
 when accessed through FUSE. Check it out!
 
-.. _beetfs: http://code.google.com/p/beetfs/
+.. _beetfs: https://github.com/jbaiter/beetfs
 
 1.0b2 (July 7, 2010)
 --------------------
